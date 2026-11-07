@@ -1,0 +1,32 @@
+{
+  "name": "notekoi---a-centralized-resource-sharing-platform",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=@repo/api\" \"npm run dev --workspace=@repo/web\"",
+    "dev:web": "npm run dev --workspace=@repo/web",
+    "dev:api": "npm run dev --workspace=@repo/api",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shrobin13/NoteKoi---A-Centralized-Resource-Sharing-Platform.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/shrobin13/NoteKoi---A-Centralized-Resource-Sharing-Platform/issues"
+  },
+  "homepage": "https://github.com/shrobin13/NoteKoi---A-Centralized-Resource-Sharing-Platform#readme",
+  "devDependencies": {
+    "concurrently": "^10.0.7"
+  }
+}
