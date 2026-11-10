@@ -9,6 +9,4 @@ generated/
 .claude
 .windsurf
 apps/api/.env
-apps/api/.env
-apps/api/.env
-apps/api/.env
+dist/
