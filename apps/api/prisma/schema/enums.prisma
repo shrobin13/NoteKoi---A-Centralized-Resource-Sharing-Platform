@@ -1,0 +1,28 @@
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ProfileVerificationStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  REJECTED
+}
+
+enum UserRoleType {
+  CR
+  CO_CR
+  SUB_ADMIN
+  PLATFORM_ADMIN
+}
+
+enum RoleScope {
+  DEPARTMENT_SESSION
+  COLLEGE
+  PLATFORM
+}
+
+enum AppointmentType {
+  STANDARD
+  EMERGENCY
+}

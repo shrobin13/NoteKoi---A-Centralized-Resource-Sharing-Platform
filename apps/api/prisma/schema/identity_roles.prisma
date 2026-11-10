@@ -1,0 +1,117 @@
+model User {
+  id           String @id @default(uuid()) @db.Uuid
+  name         String
+  email        String @unique
+  passwordHash String
+
+  accountStatus AccountStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  studentProfile   StudentProfile?
+  teacherProfile   TeacherProfile?
+  roles            UserRole[]       @relation("RoleHolder")
+  rolesAssigned    UserRole[]       @relation("RoleAssigner")
+  studentsVerified StudentProfile[] @relation("StudentVerifiedBy")
+  teachersVerified TeacherProfile[] @relation("TeacherProfileVerifier")
+
+  @@map("users")
+}
+
+model StudentProfile {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId       String @unique @db.Uuid
+  collegeId    String @db.Uuid
+  departmentId String @unique @db.Uuid
+  sessionId    String @db.Uuid
+
+  regNo String
+
+  verificationStatus ProfileVerificationStatus @default(PENDING_VERIFICATION)
+  verifiedById       String?                   @db.Uuid
+  verifiedBy         User?                     @relation("StudentVerifiedBy", fields: [verifiedById], references: [id])
+  verifiedAt         DateTime?
+
+  rejectedReason String?
+  rejectedById   String?  @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([collegeId, regNo], name: "unique_student_reg_no_per_college")
+  @@index([departmentId, sessionId], name: "idx_student_department_session")
+  @@index([verificationStatus], name: "idx_student_verification_status")
+  @@map("student_profiles")
+}
+
+model UserRole {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String       @db.Uuid
+  role   UserRoleType
+  scope  RoleScope
+
+  collegeId    String? @db.Uuid
+  departmentId String? @db.Uuid
+  sessionId    String? @db.Uuid
+  assignedById String  @db.Uuid
+
+  appointmentType AppointmentType @default(STANDARD)
+
+  assignedAt DateTime  @default(now())
+  expiresAt  DateTime?
+
+  reason      String?
+  revokedById String?   @db.Uuid
+  revokedAt   DateTime?
+
+  user       User @relation("RoleHolder", fields: [userId], references: [id])
+  assignedBy User @relation("RoleAssigner", fields: [assignedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_roles")
+}
+
+model TeacherProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+
+  teacherDepartment TeacherDepartment[]
+
+  verificationStatus ProfileVerificationStatus @default(PENDING_VERIFICATION)
+
+  verifiedById String?   @db.Uuid
+  verifiedAt   DateTime?
+
+  rejectedReason String?
+  rejectedById   String? @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user       User  @relation(fields: [userId], references: [id])
+  verifiedBy User? @relation("TeacherProfileVerifier", fields: [verifiedById], references: [id])
+  //   @@index([collegeId, verificationStatus], name: "idx_teacher_verification_status")
+
+  @@map("teacher_profiles")
+}
+
+model TeacherDepartment {
+  id           String @id @default(uuid()) @db.Uuid
+  teacherId    String @db.Uuid
+  departmentId String @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teacherProfile TeacherProfile @relation(fields: [teacherId], references: [id])
+
+  @@unique([teacherId, departmentId], name: "unique_teacher_department")
+  @@index([departmentId], name: "idx_teacher_department")
+  @@map("teacher_departments")
+}
