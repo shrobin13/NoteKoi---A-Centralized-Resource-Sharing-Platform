@@ -26,3 +26,41 @@ enum AppointmentType {
   STANDARD
   EMERGENCY
 }
+
+enum ResourceState {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  DELETED
+}
+
+enum AudienceType {
+  PRIVATE
+  COLLEGE
+  PERMITTED
+  PLATFORM
+}
+
+enum VersionState {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
+enum StorageProvider {
+  GOOGLE_DRIVE
+  LOCAL
+}
+
+enum DriveAccessType {
+  PRIVATE
+  PUBLIC
+}
+
+enum FolderState {
+  ACTIVE
+  ARCHIVED
+}

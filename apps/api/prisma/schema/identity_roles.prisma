@@ -16,6 +16,14 @@ model User {
   studentsVerified StudentProfile[] @relation("StudentVerifiedBy")
   teachersVerified TeacherProfile[] @relation("TeacherProfileVerifier")
 
+  foldersOwned      Folder[]
+  resourcesUploaded Resource[]           @relation("ResourceUploader")
+  resourcesPromoted Resource[]           @relation("ResourcePromoter")
+  resourcesFlagged  Resource[]           @relation("ResourceDeletionFlagger")
+  resourcesDeleted  Resource[]           @relation("ResourceDeleter")
+  versionsUploaded  ResourceVersion[]    @relation("VersionUploader")
+  batchGrantsGiven  ResourceBatchGrant[] @relation("GrantGiver")
+
   @@map("users")
 }
 
@@ -39,7 +47,11 @@ model StudentProfile {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id])
+  user              User              @relation(fields: [userId], references: [id])
+  college           College           @relation(fields: [collegeId], references: [id])
+  department        Department        @relation(fields: [departmentId], references: [id])
+  collegeDepartment CollegeDepartment @relation(fields: [collegeId, departmentId], references: [collegeId, departmentId])
+  session           Session           @relation(fields: [sessionId, departmentId], references: [id, departmentId])
 
   @@unique([collegeId, regNo], name: "unique_student_reg_no_per_college")
   @@index([departmentId, sessionId], name: "idx_student_department_session")
@@ -68,19 +80,25 @@ model UserRole {
   revokedById String?   @db.Uuid
   revokedAt   DateTime?
 
-  user       User @relation("RoleHolder", fields: [userId], references: [id])
-  assignedBy User @relation("RoleAssigner", fields: [assignedById], references: [id])
+  user       User        @relation("RoleHolder", fields: [userId], references: [id])
+  assignedBy User        @relation("RoleAssigner", fields: [assignedById], references: [id])
+  college    College?    @relation(fields: [collegeId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+  session    Session?    @relation(fields: [sessionId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([userId, revokedAt] ,name: "idx_user_role_user_revoked")
+  @@index([collegeId, role, revokedAt], name: "idx_user_role_college_role_revoked")
+  @@index([departmentId, sessionId, role], name: "idx_user_role_department_session_role")
   @@map("user_roles")
 }
 
 model TeacherProfile {
-  id     String @id @default(uuid()) @db.Uuid
-  userId String @unique @db.Uuid
-
+  id                String              @id @default(uuid()) @db.Uuid
+  userId            String              @unique @db.Uuid
+  collegeId         String              @db.Uuid
   teacherDepartment TeacherDepartment[]
 
   verificationStatus ProfileVerificationStatus @default(PENDING_VERIFICATION)
@@ -94,22 +112,25 @@ model TeacherProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user       User  @relation(fields: [userId], references: [id])
-  verifiedBy User? @relation("TeacherProfileVerifier", fields: [verifiedById], references: [id])
-  //   @@index([collegeId, verificationStatus], name: "idx_teacher_verification_status")
+  user       User    @relation(fields: [userId], references: [id])
+  verifiedBy User?   @relation("TeacherProfileVerifier", fields: [verifiedById], references: [id])
+  college    College @relation(fields: [collegeId], references: [id])
 
+  @@index([collegeId, verificationStatus], name: "idx_teacher_verification_status")
   @@map("teacher_profiles")
 }
 
 model TeacherDepartment {
-  id           String @id @default(uuid()) @db.Uuid
-  teacherId    String @db.Uuid
-  departmentId String @db.Uuid
+  id           String   @id @default(uuid()) @db.Uuid
+  teacherId    String   @db.Uuid
+  departmentId String   @db.Uuid
+  assignedAt   DateTime @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   teacherProfile TeacherProfile @relation(fields: [teacherId], references: [id])
+  department     Department     @relation(fields: [departmentId], references: [id])
 
   @@unique([teacherId, departmentId], name: "unique_teacher_department")
   @@index([departmentId], name: "idx_teacher_department")

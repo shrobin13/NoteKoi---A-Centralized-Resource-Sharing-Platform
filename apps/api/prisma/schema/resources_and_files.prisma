@@ -1,0 +1,130 @@
+model Resource {
+  id                  String        @id @default(uuid()) @db.Uuid
+  uploaderId          String        @db.Uuid
+  collegeId           String        @db.Uuid
+  departmentId        String        @db.Uuid
+  courseId            String        @db.Uuid
+  sessionId           String?       @db.Uuid
+  folderId            String?       @db.Uuid
+  title               String
+  description         String?
+  tags                String?
+  resourceType        String
+  audience            AudienceType
+  state               ResourceState @default(PENDING)
+  currentVersionId    String?       @unique @db.Uuid
+  promotedById        String?       @db.Uuid
+  promotedAt          DateTime?
+  deletionFlaggedById String?       @db.Uuid
+  deletionFlaggedAt   DateTime?
+  deletedById         String?       @db.Uuid
+  deletedAt           DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  uploader          User                 @relation("ResourceUploader", fields: [uploaderId], references: [id])
+  college           College              @relation(fields: [collegeId], references: [id])
+  department        Department           @relation(fields: [departmentId], references: [id])
+  course            Course?              @relation(fields: [courseId], references: [id])
+  session           Session?             @relation(fields: [sessionId], references: [id])
+  folder            Folder?              @relation(fields: [folderId], references: [id])
+  currentVersion    ResourceVersion?     @relation("ResourceCurrentVersion", fields: [currentVersionId], references: [id])
+  promotedBy        User?                @relation("ResourcePromoter", fields: [promotedById], references: [id])
+  deletionFlaggedBy User?                @relation("ResourceDeletionFlagger", fields: [deletionFlaggedById], references: [id])
+  deletedBy         User?                @relation("ResourceDeleter", fields: [deletedById], references: [id])
+  collegeDepartment CollegeDepartment    @relation(fields: [collegeId, departmentId], references: [collegeId, departmentId])
+  versions          ResourceVersion[]    @relation("ResourceVersions")
+  batchGrants       ResourceBatchGrant[]
+
+  @@unique([id, collegeId, departmentId], name: "unique_resource_id_college_department")
+  @@index([collegeId, departmentId, sessionId] , name: "idx_resource_college_department_session")
+  @@index([uploaderId], name: "idx_resource_uploader")
+  @@index([folderId], name: "idx_resource_folder")
+  @@index([courseId], name: "idx_resource_course")
+  @@index([audience, state], name: "idx_resource_audience_state")
+  @@index([state, departmentId, sessionId, createdAt], name: "idx_resource_state_department_session_createdAt")
+
+  @@map("resources")
+}
+
+model ResourceVersion {
+  id              String        @id @default(uuid()) @db.Uuid
+  resourceId      String        @db.Uuid
+  versionNo       Int
+  physicalFileId  String?       @db.Uuid
+  externalUrl     String?
+  state           VersionState  @default(PENDING)
+  uploadedById    String        @db.Uuid
+  rejectionReason String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  resource        Resource      @relation("ResourceVersions", fields: [resourceId], references: [id])
+  physicalFile    PhysicalFile? @relation(fields: [physicalFileId], references: [id])
+  uploadedBy      User          @relation("VersionUploader", fields: [uploadedById], references: [id])
+  currentFor      Resource?     @relation("ResourceCurrentVersion")
+
+  @@unique([resourceId, versionNo], name: "unique_resource_version")
+  @@unique([id, resourceId], name: "unique_resource_version_id")
+  @@index([physicalFileId], name: "idx_resource_version_physical_file")
+  @@index([state], name: "idx_resource_version_state")
+
+  @@map("resource_versions")
+}
+
+model PhysicalFile {
+  id                  String            @id @default(uuid()) @db.Uuid
+  contentHash         String            @unique
+  sizeBytes           BigInt
+  mimeType            String
+  storageProvider     StorageProvider
+  driveFileId         String?
+  driveFolderId       String?
+  driveWebViewLink    String?
+  driveWebContentLink String?
+  driveAccessType     DriveAccessType   @default(PRIVATE)
+  createdAt           DateTime          @default(now())
+  versions            ResourceVersion[]
+
+  @@map("physical_files")
+}
+
+model Folder {
+  id        String      @id @default(uuid()) @db.Uuid
+  name      String
+  parentId  String?     @db.Uuid
+  ownerId   String      @db.Uuid
+  courseId  String?     @db.Uuid
+  depth     Int         @default(0)
+  state     FolderState @default(ACTIVE)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  parent    Folder?    @relation("FolderTree", fields: [parentId], references: [id])
+  children  Folder[]   @relation("FolderTree")
+  owner     User       @relation(fields: [ownerId], references: [id])
+  course    Course?    @relation(fields: [courseId], references: [id])
+  resources Resource[]
+
+  @@index([parentId], name: "idx_folder_parent")
+  @@index([courseId], name: "idx_folder_course")
+
+  @@map("folders")
+}
+
+model ResourceBatchGrant {
+  id           String   @id @default(uuid()) @db.Uuid
+  resourceId   String   @db.Uuid
+  sessionId    String   @db.Uuid
+  collegeId    String   @db.Uuid
+  departmentId String   @db.Uuid
+  grantedById  String   @db.Uuid
+  grantedAt    DateTime @default(now())
+  resource     Resource @relation(fields: [resourceId, collegeId, departmentId], references: [id, collegeId, departmentId], onDelete: Cascade)
+  session      Session  @relation(fields: [sessionId, departmentId], references: [id, departmentId])
+  grantedBy    User     @relation("GrantGiver", fields: [grantedById], references: [id])
+
+  @@unique([resourceId, sessionId], name: "unique_resource_batch_grant")
+  @@index([sessionId], name: "idx_resource_batch_grant_session")
+
+  @@map("resource_batch_grants")
+}

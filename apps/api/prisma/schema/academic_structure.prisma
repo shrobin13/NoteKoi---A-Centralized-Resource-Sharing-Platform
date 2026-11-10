@@ -1,0 +1,87 @@
+model College {
+  id              String              @id @default(uuid()) @db.Uuid
+  name            String              @unique
+  isActive        Boolean             @default(true)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  departments     CollegeDepartment[]
+  studentProfiles StudentProfile[]
+  teacherProfiles TeacherProfile[]
+  roles           UserRole[]
+  resources       Resource[]
+
+  @@map("colleges")
+}
+
+model Department {
+  id              String              @id @default(uuid()) @db.Uuid
+  name            String              @unique
+  isActive        Boolean             @default(true)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  colleges        CollegeDepartment[]
+  sessions        Session[]
+  courses         Course[]
+  studentProfiles StudentProfile[]
+  teacherProfiles TeacherDepartment[]
+  roles           UserRole[]
+  resources       Resource[]
+
+  @@map("departments")
+}
+
+model CollegeDepartment {
+  id              String           @id @default(uuid()) @db.Uuid
+  collegeId       String           @db.Uuid
+  departmentId    String           @db.Uuid
+  adoptedAt       DateTime         @default(now())
+  college         College          @relation(fields: [collegeId], references: [id])
+  department      Department       @relation(fields: [departmentId], references: [id])
+  studentProfiles StudentProfile[]
+  resources       Resource[]
+
+  @@unique([collegeId, departmentId],name: "unique_college_department")
+  @@index([departmentId], name: "idx_college_department")
+
+  @@map("college_departments")
+}
+
+model Session {
+  id              String               @id @default(uuid()) @db.Uuid
+  departmentId    String               @db.Uuid
+  name            String
+  startDate       DateTime?            @db.Date
+  endDate         DateTime?            @db.Date
+  isActive        Boolean              @default(true)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  department      Department           @relation(fields: [departmentId], references: [id])
+  studentProfiles StudentProfile[]
+  roles           UserRole[]
+  resources       Resource[]
+  batchGrants     ResourceBatchGrant[]
+
+  @@unique([departmentId, name], name: "unique_session_department_name")
+  @@unique([id, departmentId], name: "unique_session_id_department_id")
+
+  @@map("sessions")
+}
+
+model Course {
+  id           String     @id @default(uuid()) @db.Uuid
+  departmentId String     @db.Uuid
+  name         String
+  description  String?
+  semester     Int?
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  department   Department @relation(fields: [departmentId], references: [id])
+  folders      Folder[]
+  resources    Resource[]
+
+  @@unique([departmentId, name] , name: "unique_course_department_name")
+  @@unique([id, departmentId], name: "unique_course_id_department_id")
+
+  @@map("courses")
+}
