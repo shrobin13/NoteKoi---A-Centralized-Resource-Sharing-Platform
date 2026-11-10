@@ -1,24 +1,32 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022"],
+    "target": "ES2023",
+    "lib": ["ES2023"],
+
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
 
     "rootDir": ".",
     "outDir": "dist",
 
+    "types": ["node"],
+
     "strict": true,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
+
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
 
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
 
     "sourceMap": true,
-    "declaration": true
+    "declaration": true,
+    "declarationMap": true
   },
   "include": [
     "src/**/*.ts",
@@ -29,3 +37,4 @@
     "dist"
   ]
 }
+
