@@ -27,6 +27,7 @@
   },
   "homepage": "https://github.com/shrobin13/NoteKoi---A-Centralized-Resource-Sharing-Platform#readme",
   "devDependencies": {
+    "@types/node": "^26.6.6",
     "concurrently": "^10.0.7"
   }
 }
