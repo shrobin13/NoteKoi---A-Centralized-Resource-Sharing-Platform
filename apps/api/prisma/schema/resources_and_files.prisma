@@ -3,7 +3,7 @@ model Resource {
   uploaderId          String        @db.Uuid
   collegeId           String        @db.Uuid
   departmentId        String        @db.Uuid
-  courseId            String        @db.Uuid
+  courseId            String?       @db.Uuid
   sessionId           String?       @db.Uuid
   folderId            String?       @db.Uuid
   title               String
@@ -22,28 +22,31 @@ model Resource {
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
 
-  uploader          User                 @relation("ResourceUploader", fields: [uploaderId], references: [id])
-  college           College              @relation(fields: [collegeId], references: [id])
-  department        Department           @relation(fields: [departmentId], references: [id])
-  course            Course?              @relation(fields: [courseId], references: [id])
-  session           Session?             @relation(fields: [sessionId], references: [id])
-  folder            Folder?              @relation(fields: [folderId], references: [id])
-  currentVersion    ResourceVersion?     @relation("ResourceCurrentVersion", fields: [currentVersionId], references: [id])
-  promotedBy        User?                @relation("ResourcePromoter", fields: [promotedById], references: [id])
-  deletionFlaggedBy User?                @relation("ResourceDeletionFlagger", fields: [deletionFlaggedById], references: [id])
-  deletedBy         User?                @relation("ResourceDeleter", fields: [deletedById], references: [id])
-  collegeDepartment CollegeDepartment    @relation(fields: [collegeId, departmentId], references: [collegeId, departmentId])
-  versions          ResourceVersion[]    @relation("ResourceVersions")
-  batchGrants       ResourceBatchGrant[]
+  uploader              User                   @relation("ResourceUploader", fields: [uploaderId], references: [id])
+  college               College                @relation(fields: [collegeId], references: [id])
+  department            Department             @relation(fields: [departmentId], references: [id])
+  course                Course?                @relation(fields: [courseId], references: [id])
+  session               Session?               @relation(fields: [sessionId], references: [id])
+  folder                Folder?                @relation(fields: [folderId], references: [id])
+  currentVersion        ResourceVersion?       @relation("ResourceCurrentVersion", fields: [currentVersionId], references: [id])
+  promotedBy            User?                  @relation("ResourcePromoter", fields: [promotedById], references: [id])
+  deletionFlaggedBy     User?                  @relation("ResourceDeletionFlagger", fields: [deletionFlaggedById], references: [id])
+  deletedBy             User?                  @relation("ResourceDeleter", fields: [deletedById], references: [id])
+  collegeDepartment     CollegeDepartment      @relation(fields: [collegeId, departmentId], references: [collegeId, departmentId])
+  versions              ResourceVersion[]      @relation("ResourceVersions")
+  batchGrants           ResourceBatchGrant[]
+  reports               Report[]
+  deletionRequests      DeletionRequest[]
+  moderationEscalations ModerationEscalation[]
+  comments              Comment[]
 
   @@unique([id, collegeId, departmentId], name: "unique_resource_id_college_department")
-  @@index([collegeId, departmentId, sessionId] , name: "idx_resource_college_department_session")
+  @@index([collegeId, departmentId, sessionId], name: "idx_resource_college_department_session")
   @@index([uploaderId], name: "idx_resource_uploader")
   @@index([folderId], name: "idx_resource_folder")
   @@index([courseId], name: "idx_resource_course")
   @@index([audience, state], name: "idx_resource_audience_state")
   @@index([state, departmentId, sessionId, createdAt], name: "idx_resource_state_department_session_createdAt")
-
   @@map("resources")
 }
 
@@ -67,7 +70,6 @@ model ResourceVersion {
   @@unique([id, resourceId], name: "unique_resource_version_id")
   @@index([physicalFileId], name: "idx_resource_version_physical_file")
   @@index([state], name: "idx_resource_version_state")
-
   @@map("resource_versions")
 }
 
@@ -106,8 +108,8 @@ model Folder {
   resources Resource[]
 
   @@index([parentId], name: "idx_folder_parent")
+  @@index([ownerId], name: "idx_folder_owner")
   @@index([courseId], name: "idx_folder_course")
-
   @@map("folders")
 }
 
@@ -125,6 +127,5 @@ model ResourceBatchGrant {
 
   @@unique([resourceId, sessionId], name: "unique_resource_batch_grant")
   @@index([sessionId], name: "idx_resource_batch_grant_session")
-
   @@map("resource_batch_grants")
 }

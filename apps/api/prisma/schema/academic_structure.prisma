@@ -40,9 +40,8 @@ model CollegeDepartment {
   studentProfiles StudentProfile[]
   resources       Resource[]
 
-  @@unique([collegeId, departmentId],name: "unique_college_department")
+  @@unique([collegeId, departmentId], name: "unique_college_department")
   @@index([departmentId], name: "idx_college_department")
-
   @@map("college_departments")
 }
 
@@ -63,7 +62,6 @@ model Session {
 
   @@unique([departmentId, name], name: "unique_session_department_name")
   @@unique([id, departmentId], name: "unique_session_id_department_id")
-
   @@map("sessions")
 }
 
@@ -80,8 +78,7 @@ model Course {
   folders      Folder[]
   resources    Resource[]
 
-  @@unique([departmentId, name] , name: "unique_course_department_name")
+  @@unique([departmentId, name], name: "unique_course_department_name")
   @@unique([id, departmentId], name: "unique_course_id_department_id")
-
   @@map("courses")
 }

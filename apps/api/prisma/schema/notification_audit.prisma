@@ -1,0 +1,30 @@
+model AuditLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  actorId       String   @db.Uuid
+  action        String
+  targetType    String
+  targetId      String   @db.Uuid
+  justification String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  actor         User     @relation(fields: [actorId], references: [id])
+
+  @@index([actorId, createdAt], name: "audit_log_actor_created_at_idx")
+  @@map("audit_logs")
+}
+
+model Notification {
+  id     String           @id @default(uuid()) @db.Uuid
+  userId String           @db.Uuid
+  type   NotificationType
+
+  payload Json
+  readAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt, createdAt], name: "notification_user_read_created_at_idx")
+  @@map("notifications")
+}

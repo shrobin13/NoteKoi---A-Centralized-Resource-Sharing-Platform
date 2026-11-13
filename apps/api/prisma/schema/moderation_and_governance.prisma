@@ -1,0 +1,89 @@
+model Report {
+  id         String @id @default(uuid()) @db.Uuid
+  resourceId String @db.Uuid
+  reporterId String @db.Uuid
+
+  reason String
+  status ReportStatus @default(PENDING)
+
+  resolvedById String?   @db.Uuid
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  resource    Resource               @relation(fields: [resourceId], references: [id])
+  reporter    User                   @relation("ReportReporter", fields: [reporterId], references: [id])
+  resolvedBy  User?                  @relation("ReportResolver", fields: [resolvedById], references: [id])
+  escalations ModerationEscalation[] @relation("ReportEscalations")
+
+  @@index([status, createdAt])
+  @@index([resourceId])
+  @@index([reporterId])
+}
+
+model DeletionRequest {
+  id String @id @default(uuid()) @db.Uuid
+
+  resourceId  String @db.Uuid
+  requesterId String @db.Uuid
+
+  reason String
+  status DeletionRequestStatus @default(PENDING)
+
+  decidedById String?   @db.Uuid
+  decidedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  resource  Resource @relation(fields: [resourceId], references: [id])
+  requester User     @relation("DeletionRequester", fields: [requesterId], references: [id])
+  decidedBy User?    @relation("DeletionDecider", fields: [decidedById], references: [id])
+
+  escalations ModerationEscalation[] @relation("DeletionRequestEscalations")
+
+  @@index([status, createdAt])
+  @@index([resourceId])
+  @@index([requesterId])
+}
+
+model ModerationEscalation {
+  id String @id @default(uuid()) @db.Uuid
+
+  resourceId String  @db.Uuid
+  reportId   String? @db.Uuid
+
+  deletionRequestId String? @db.Uuid
+
+  escalatedById String  @db.Uuid
+  assignedToId  String? @db.Uuid
+
+  reason     String
+  status     EscalationStatus @default(OPEN)
+  resolvedAt DateTime?
+  createdAt  DateTime         @default(now())
+
+  resource Resource @relation(fields: [resourceId], references: [id])
+  report   Report?  @relation("ReportEscalations", fields: [reportId], references: [id])
+
+  deletionRequest DeletionRequest? @relation("DeletionRequestEscalations", fields: [deletionRequestId], references: [id])
+  escalatedBy     User             @relation("EscalationCreator", fields: [escalatedById], references: [id])
+  assignedTo      User?            @relation("EscalationAssignee", fields: [assignedToId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([resourceId])
+  @@index([assignedToId, status])
+}
+
+model Comment {
+  id         String    @id @default(uuid()) @db.Uuid
+  resourceId String    @db.Uuid
+  authorId   String    @db.Uuid
+  body       String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  resource Resource @relation(fields: [resourceId], references: [id])
+  author   User     @relation("CommentAuthor", fields: [authorId], references: [id])
+
+  @@index([resourceId, createdAt])
+  @@index([authorId])
+}

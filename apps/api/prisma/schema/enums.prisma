@@ -53,14 +53,42 @@ enum VersionState {
 enum StorageProvider {
   GOOGLE_DRIVE
   LOCAL
+  S3
 }
 
 enum DriveAccessType {
   PRIVATE
-  PUBLIC
+  ANYONE_READ
 }
 
 enum FolderState {
   ACTIVE
   ARCHIVED
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+enum DeletionRequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+}
+
+enum EscalationStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum NotificationType {
+  RESOURCE_APPROVED
+  RESOURCE_REJECTED
+  RESOURCE_SHARED
+  RESOURCE_DELETED
+  DELETION_APPROVED
+  DELETION_DENIED
 }
