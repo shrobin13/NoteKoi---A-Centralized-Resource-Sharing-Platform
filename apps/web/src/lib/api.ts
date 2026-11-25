@@ -96,3 +96,37 @@ export const apiGet = async <T>(path: string, signal?: AbortSignal): Promise<T> 
 
 export const apiPost = async <T>(path: string, body: unknown): Promise<ApiSuccess<T>> =>
   apiRequest<T>(path, { method: "POST", body });
+
+export const apiPatch = async <T>(path: string, body: unknown): Promise<T> =>
+  (await apiRequest<T>(path, { method: "PATCH", body })).data;
+
+export const apiPut = async <T>(path: string, body: unknown): Promise<T> =>
+  (await apiRequest<T>(path, { method: "PUT", body })).data;
+
+/** `body` is optional: `DELETE /colleges/:id/departments/:departmentId` carries none. */
+export const apiDelete = async <T>(path: string, body?: unknown): Promise<T> =>
+  (await apiRequest<T>(path, { method: "DELETE", body })).data;
+
+/** Human-readable message for a mutation failure (server message wins). */
+export function getErrorMessage(error: unknown, fallback = "Something went wrong. Please try again."): string {
+  if (error instanceof ApiError) return error.message;
+  if (error instanceof Error) return error.message;
+
+  return fallback;
+}
+
+/** Serialises defined query values only (`?status=all&search=x`), skipping empty strings. */
+export function toQueryString(params: object): string {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") continue;
+
+    search.set(key, String(value));
+  }
+
+  const query = search.toString();
+
+  return query.length > 0 ? `?${query}` : "";
+}
+

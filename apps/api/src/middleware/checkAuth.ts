@@ -86,77 +86,80 @@ const toAuthProfile = (
  * 3. Redis denylist (`deny:{jti}`); Redis down = 503 (fail closed)
  * 4. user (not SUSPENDED, email verified), profile and active roles from the DB
  */
-export const checkAuth: RequestHandler = async (req, _res, next) => {
-  try {
-    const token = tokenFromRequest(req);
+export const resolveAuthUser = async (req: Request): Promise<AuthUser> => {
+  const token = tokenFromRequest(req);
 
-    if (!token) {
-      throw AppError.unauthorized("Sign in to continue", "NOT_AUTHENTICATED");
-    }
+  if (!token) {
+    throw AppError.unauthorized("Sign in to continue", "NOT_AUTHENTICATED");
+  }
 
-    const claims = verifyAccessToken(token);
+  const claims = verifyAccessToken(token);
 
-    if (await isAccessTokenDenied(claims.jti)) {
-      throw AppError.unauthorized("Your session has ended. Please sign in again.", "TOKEN_REVOKED");
-    }
+  if (await isAccessTokenDenied(claims.jti)) {
+    throw AppError.unauthorized("Your session has ended. Please sign in again.", "TOKEN_REVOKED");
+  }
 
-    const user = await prisma.user.findUnique({
-      where: { id: claims.sub },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        type: true,
-        accountStatus: true,
-        emailVerifiedAt: true,
-        studentProfile: {
-          select: {
-            id: true,
-            collegeId: true,
-            departmentId: true,
-            sessionId: true,
-            regNo: true,
-            includeOtherColleges: true,
-            verificationStatus: true,
-          },
-        },
-        teacherProfile: {
-          select: {
-            id: true,
-            collegeId: true,
-            verificationStatus: true,
-            teacherDepartments: { select: { departmentId: true } },
-          },
+  const user = await prisma.user.findUnique({
+    where: { id: claims.sub },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      type: true,
+      accountStatus: true,
+      emailVerifiedAt: true,
+      studentProfile: {
+        select: {
+          id: true,
+          collegeId: true,
+          departmentId: true,
+          sessionId: true,
+          regNo: true,
+          includeOtherColleges: true,
+          verificationStatus: true,
         },
       },
-    });
+      teacherProfile: {
+        select: {
+          id: true,
+          collegeId: true,
+          verificationStatus: true,
+          teacherDepartments: { select: { departmentId: true } },
+        },
+      },
+    },
+  });
 
-    if (!user) {
-      throw AppError.unauthorized("This account no longer exists", "ACCOUNT_NOT_FOUND");
-    }
+  if (!user) {
+    throw AppError.unauthorized("This account no longer exists", "ACCOUNT_NOT_FOUND");
+  }
 
-    if (user.accountStatus === "SUSPENDED") {
-      throw AppError.forbidden("Your account is suspended. Contact your college Sub Admin.", "ACCOUNT_SUSPENDED");
-    }
+  if (user.accountStatus === "SUSPENDED") {
+    throw AppError.forbidden("Your account is suspended. Contact your college Sub Admin.", "ACCOUNT_SUSPENDED");
+  }
 
-    if (!user.emailVerifiedAt) {
-      throw AppError.forbidden("Verify your email address to continue", "EMAIL_NOT_VERIFIED");
-    }
+  if (!user.emailVerifiedAt) {
+    throw AppError.forbidden("Verify your email address to continue", "EMAIL_NOT_VERIFIED");
+  }
 
-    const auth: AuthUser = {
-      userId: user.id,
-      jti: claims.jti,
-      tokenExpiresAt: claims.exp,
-      name: user.name,
-      email: user.email,
-      type: user.type,
-      accountStatus: user.accountStatus,
-      emailVerifiedAt: user.emailVerifiedAt,
-      profile: toAuthProfile(user.studentProfile, user.teacherProfile),
-      roles: await getActiveRoles(user.id),
-    };
+  return {
+    userId: user.id,
+    jti: claims.jti,
+    tokenExpiresAt: claims.exp,
+    name: user.name,
+    email: user.email,
+    type: user.type,
+    accountStatus: user.accountStatus,
+    emailVerifiedAt: user.emailVerifiedAt,
+    profile: toAuthProfile(user.studentProfile, user.teacherProfile),
+    roles: await getActiveRoles(user.id),
+  };
+};
 
-    req.auth = auth;
+/** Hard guard: `401 NOT_AUTHENTICATED` when no usable session is presented. */
+export const checkAuth: RequestHandler = async (req, _res, next) => {
+  try {
+    req.auth = await resolveAuthUser(req);
     next();
   } catch (error) {
     next(error);

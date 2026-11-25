@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { RequireAuth } from "@/components/auth-guard";
+import { useHasRole } from "@/components/require-role";
 import { EmptyState } from "@/components/states";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +63,57 @@ function ProfileCard({ user }: { user: Me }) {
   );
 }
 
+/**
+ * S2 entry points. The public directories are open to everybody; every admin
+ * screen appears only for the role that can open it (`useHasRole` mirrors
+ * `checkRole`, and a Platform Admin passes every check).
+ */
+function Shortcuts() {
+  const canManageStructure = useHasRole(["PLATFORM_ADMIN"]);
+  const canVerify = useHasRole(["SUB_ADMIN", "CR", "CO_CR"]);
+  const canManageRoles = useHasRole(["SUB_ADMIN"]);
+  const canManageSubAdmins = useHasRole(["PLATFORM_ADMIN"]);
+
+  const links: { href: string; label: string }[] = [
+    { href: "/colleges", label: "Browse colleges" },
+    { href: "/departments", label: "Browse departments" },
+    { href: "/courses", label: "Browse courses" },
+  ];
+
+  if (canVerify) links.push({ href: "/admin/verifications", label: "Verification queues" });
+  if (canManageRoles) links.push({ href: "/admin/roles", label: "Roles & representatives" });
+  if (canManageSubAdmins) links.push({ href: "/admin/sub-admins", label: "Sub Admins" });
+  if (canManageStructure) {
+    links.push({ href: "/admin/colleges", label: "Manage colleges" });
+    links.push({ href: "/admin/departments", label: "Manage departments" });
+    links.push({ href: "/admin/sessions", label: "Manage sessions" });
+    links.push({ href: "/admin/courses", label: "Manage courses" });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Shortcuts</CardTitle>
+        <CardDescription>The screens your roles can open right now.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {links.map((link) => (
+            <li key={link.href}>
+              <Link
+                href={link.href}
+                className="block rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                {link.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
 function DashboardContent() {
   const me = useMe();
   const user = me.data;
@@ -111,6 +164,8 @@ function DashboardContent() {
           <AlertDescription>Uploads open up in the next slice (S3).</AlertDescription>
         </Alert>
       ) : null}
+
+      <Shortcuts />
 
       <ProfileCard user={user} />
 

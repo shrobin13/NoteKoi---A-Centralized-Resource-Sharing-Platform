@@ -3,7 +3,10 @@ import { prisma } from "../lib/prisma.js";
 import { pingRedis } from "../lib/redis.js";
 import { authRouter } from "../module/auth/auth.route.js";
 import { collegeRouter } from "../module/college/college.route.js";
+import { courseRouter } from "../module/course/course.route.js";
 import { departmentRouter } from "../module/department/department.route.js";
+import { sessionRouter } from "../module/session/session.route.js";
+import { userRouter } from "../module/user/user.route.js";
 import { sendResponse } from "../utils/sendResponse.js";
 
 /**
@@ -18,6 +21,11 @@ export const apiRouter = Router();
 apiRouter.use("/api/v1/auth", authRouter);
 apiRouter.use("/api/v1/colleges", collegeRouter);
 apiRouter.use("/api/v1/departments", departmentRouter);
+
+// Slice 2 modules (academic structure A.1–A.4).
+apiRouter.use("/api/v1/sessions", sessionRouter);
+apiRouter.use("/api/v1/courses", courseRouter);
+apiRouter.use("/api/v1/users", userRouter);
 
 async function isDatabaseUp(): Promise<boolean> {
   try {
