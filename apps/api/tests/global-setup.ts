@@ -17,8 +17,12 @@ export default function globalSetup(): void {
   }
 
   if (testDatabaseUrl === process.env.DATABASE_URL?.trim()) {
-    console.warn("[vitest] TEST_DATABASE_URL equals DATABASE_URL — refusing to migrate the dev database.");
-    return;
+    throw new Error("[vitest] TEST_DATABASE_URL must differ from DATABASE_URL.");
+  }
+
+  const databaseName = new URL(testDatabaseUrl).pathname.split("/").filter(Boolean).at(-1);
+  if (!databaseName || !decodeURIComponent(databaseName).endsWith("_test")) {
+    throw new Error("[vitest] TEST_DATABASE_URL must point to a database whose name ends in _test.");
   }
 
   console.log("[vitest] applying migrations to the test database");

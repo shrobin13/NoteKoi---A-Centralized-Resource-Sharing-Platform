@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import { clearAuthCookie, setAuthCookie } from "../../lib/jwt.js";
+import { signUploadToken } from "../../lib/uploadToken.js";
 import { requireAuth } from "../../middleware/checkAuth.js";
 import { getValidated } from "../../middleware/validateRequest.js";
 import { sendResponse } from "../../utils/sendResponse.js";
@@ -77,6 +78,22 @@ export const me: RequestHandler = async (req, res) => {
   const user = await authService.buildMe(auth.userId);
 
   sendResponse(res, { message: "Current user", data: user });
+};
+
+/** POST /api/v1/auth/upload-token — short-lived bearer for a direct file upload (S3-B8/D21). */
+export const uploadToken: RequestHandler = async (req, res) => {
+  const auth = requireAuth(req);
+  const signed = signUploadToken(auth.userId);
+
+  sendResponse(res, {
+    message: "Upload token issued",
+    data: {
+      token: signed.token,
+      tokenType: "Bearer",
+      expiresAt: signed.expiresAt,
+      expiresInSeconds: signed.ttlSeconds,
+    },
+  });
 };
 
 /** POST /api/v1/auth/forgot-password */

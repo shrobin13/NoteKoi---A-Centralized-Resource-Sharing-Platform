@@ -60,3 +60,12 @@ authRouter.post(
 );
 
 authRouter.get("/me", checkAuth, controller.me);
+
+// S3-B8 / D21 — a short-lived bearer the browser uses to post a large file
+// directly to this API (the Next.js proxy would hit the 4.5 MB body cap).
+authRouter.post(
+  "/upload-token",
+  checkAuth,
+  rateLimiter({ name: "auth:upload-token", max: 30, windowSeconds: 15 * 60 }),
+  controller.uploadToken,
+);

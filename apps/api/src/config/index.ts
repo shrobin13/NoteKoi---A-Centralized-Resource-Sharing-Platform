@@ -1,4 +1,5 @@
 import "dotenv/config";
+import path from "node:path";
 import { z } from "zod";
 
 /** Treat an empty value in `.env` (`SMTP_HOST=`) as "not configured". */
@@ -37,8 +38,15 @@ const envSchema = z.object({
   // Google Drive — optional until S3-B3/S3-B9 (upload + download).
   GOOGLE_SERVICE_ACCOUNT_JSON: optionalText("GOOGLE_SERVICE_ACCOUNT_JSON"),
   DRIVE_ROOT_FOLDER_ID: optionalText("DRIVE_ROOT_FOLDER_ID"),
+  GOOGLE_DRIVE_API_BASE_URL: z.url().default("https://www.googleapis.com/drive/v3"),
+
+  // File storage (S3-B2). Drive is the only provider in production; the local
+  // driver keeps development and tests credential-free (git-ignored directory).
+  STORAGE_DRIVER: z.preprocess(emptyToUndefined, z.enum(["google-drive", "local"]).optional()),
+  LOCAL_STORAGE_DIR: z.string().trim().min(1).default("storage"),
 
   MAX_UPLOAD_MB: z.coerce.number().int().positive().max(200).default(50),
+  UPLOAD_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(3600).default(300),
 
   // Seed script only (S1-B14). Never used by the running API.
   SEED_PASSWORD: z.preprocess(
@@ -79,6 +87,26 @@ const envSchema = z.object({
       code: "custom",
       path: ["SEED_PASSWORD"],
       message: "SEED_PASSWORD must be set in production (the seed script refuses to run without it)",
+    });
+  }
+
+  if (value.STORAGE_DRIVER === "local") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["STORAGE_DRIVER"],
+      message: "STORAGE_DRIVER=local is not allowed in production (files must live in Drive)",
+    });
+  }
+
+  const missingDrive = (["GOOGLE_SERVICE_ACCOUNT_JSON", "DRIVE_ROOT_FOLDER_ID"] as const).filter(
+    (key) => !value[key],
+  );
+
+  if (missingDrive.length > 0) {
+    ctx.addIssue({
+      code: "custom",
+      path: [missingDrive[0] ?? "GOOGLE_SERVICE_ACCOUNT_JSON"],
+      message: `${missingDrive.join(", ")} must be set in production (there is no local storage fallback)`,
     });
   }
 });
@@ -124,7 +152,14 @@ export const config = {
   drive: {
     serviceAccountJson: env.GOOGLE_SERVICE_ACCOUNT_JSON,
     rootFolderId: env.DRIVE_ROOT_FOLDER_ID,
+    apiBaseUrl: env.GOOGLE_DRIVE_API_BASE_URL,
     isConfigured: driveConfigured,
+  },
+  storage: {
+    /** Drive whenever it is configured, unless the developer asks for the local driver. */
+    driver: env.STORAGE_DRIVER ?? (driveConfigured ? ("google-drive" as const) : ("local" as const)),
+    localDir: path.resolve(env.LOCAL_STORAGE_DIR),
+    uploadTokenTtlSeconds: env.UPLOAD_TOKEN_TTL_SECONDS,
   },
   maxUploadBytes: env.MAX_UPLOAD_MB * 1024 * 1024,
 

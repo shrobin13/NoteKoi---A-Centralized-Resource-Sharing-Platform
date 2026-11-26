@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { SearchInput } from "@/components/search-input";
 import { EmptyState, ErrorState, LoadingState } from "@/components/states";
@@ -82,7 +83,9 @@ export function CourseDirectory() {
             <Card className="h-full">
               <CardContent className="flex h-full flex-col gap-2 p-5">
                 <div className="flex items-start justify-between gap-2">
-                  <p className="font-medium">{course.name}</p>
+                  <Link href={`/courses/${course.id}`} className="font-medium hover:underline">
+                    {course.name}
+                  </Link>
                   {course.semester ? <Badge variant="secondary">Sem {course.semester}</Badge> : null}
                 </div>
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">{course.departmentName}</p>

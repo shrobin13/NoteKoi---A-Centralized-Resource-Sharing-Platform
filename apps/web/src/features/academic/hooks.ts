@@ -141,10 +141,11 @@ export const useSessionList = (params: SessionListParams = {}) =>
     staleTime: 30_000,
   });
 
-export const useCourseList = (params: CourseListParams = {}) =>
+export const useCourseList = (params: CourseListParams = {}, enabled = true) =>
   useQuery<CourseView[]>({
     queryKey: academicKeys.courseList(params),
     queryFn: ({ signal }) => fetchCourseList(params, signal),
+    enabled,
     staleTime: 30_000,
   });
 

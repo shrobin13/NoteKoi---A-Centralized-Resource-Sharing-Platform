@@ -5,12 +5,16 @@ mise.toml
 .next
 generated/
 
-.agents
-.claude
-.windsurf
 apps/api/.env
 dist/
 
+# Local storage driver (S3-B2) — uploaded test files must never be committed.
+apps/api/storage/
+
+# Agent tooling and planning docs stay out of the repo history.
+.agents
+.claude
+.windsurf
 docs
 
 # TypeScript build info (web app uses incremental builds)

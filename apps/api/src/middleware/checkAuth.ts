@@ -14,7 +14,8 @@ export const requireAuth = (req: Request): AuthUser => {
   return req.auth;
 };
 
-const bearerToken = (req: Request): string | undefined => {
+/** Reads `Authorization: Bearer <token>`; shared with the upload-token guard (S3-B8). */
+export const bearerToken = (req: Request): string | undefined => {
   const header = req.headers.authorization;
 
   if (!header?.startsWith("Bearer ")) return undefined;
@@ -99,8 +100,21 @@ export const resolveAuthUser = async (req: Request): Promise<AuthUser> => {
     throw AppError.unauthorized("Your session has ended. Please sign in again.", "TOKEN_REVOKED");
   }
 
+  const identity = await loadAuthUserById(claims.sub);
+
+  return { ...identity, jti: claims.jti, tokenExpiresAt: claims.exp };
+};
+
+/**
+ * Loads the account a token points at: not suspended, email verified, with the
+ * profile and the active roles. Shared by the session and upload-token paths
+ * (S3-B8) so both apply exactly the same account rules.
+ */
+export const loadAuthUserById = async (
+  userId: string,
+): Promise<Omit<AuthUser, "jti" | "tokenExpiresAt">> => {
   const user = await prisma.user.findUnique({
-    where: { id: claims.sub },
+    where: { id: userId },
     select: {
       id: true,
       name: true,
@@ -144,8 +158,6 @@ export const resolveAuthUser = async (req: Request): Promise<AuthUser> => {
 
   return {
     userId: user.id,
-    jti: claims.jti,
-    tokenExpiresAt: claims.exp,
     name: user.name,
     email: user.email,
     type: user.type,
@@ -155,6 +167,7 @@ export const resolveAuthUser = async (req: Request): Promise<AuthUser> => {
     roles: await getActiveRoles(user.id),
   };
 };
+
 
 /** Hard guard: `401 NOT_AUTHENTICATED` when no usable session is presented. */
 export const checkAuth: RequestHandler = async (req, _res, next) => {

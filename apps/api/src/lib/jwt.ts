@@ -78,6 +78,12 @@ export const verifyAccessToken = (token: string): AccessTokenClaims => {
     throw AppError.unauthorized("Your session is invalid or has expired", "INVALID_TOKEN");
   }
 
+  // D21: short-lived upload tokens are signed with the same secret but are not
+  // sessions — they must never authenticate anything except the upload route.
+  if (typeof decoded.scope === "string") {
+    throw AppError.unauthorized("Your session is invalid or has expired", "INVALID_TOKEN");
+  }
+
   return { sub: decoded.sub, jti: decoded.jti, exp: decoded.exp };
 };
 

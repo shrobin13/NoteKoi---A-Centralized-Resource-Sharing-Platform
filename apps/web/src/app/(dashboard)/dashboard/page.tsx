@@ -68,20 +68,24 @@ function ProfileCard({ user }: { user: Me }) {
  * screen appears only for the role that can open it (`useHasRole` mirrors
  * `checkRole`, and a Platform Admin passes every check).
  */
-function Shortcuts() {
+function Shortcuts({ canUpload, canManageFiles }: { canUpload: boolean; canManageFiles: boolean }) {
   const canManageStructure = useHasRole(["PLATFORM_ADMIN"]);
   const canVerify = useHasRole(["SUB_ADMIN", "CR", "CO_CR"]);
   const canManageRoles = useHasRole(["SUB_ADMIN"]);
   const canManageSubAdmins = useHasRole(["PLATFORM_ADMIN"]);
 
   const links: { href: string; label: string }[] = [
+    { href: "/my-uploads", label: "My uploads" },
     { href: "/colleges", label: "Browse colleges" },
     { href: "/departments", label: "Browse departments" },
     { href: "/courses", label: "Browse courses" },
   ];
 
   if (canVerify) links.push({ href: "/admin/verifications", label: "Verification queues" });
+  if (canVerify || canManageRoles) links.push({ href: "/admin/moderation", label: "Moderation queue" });
+  if (canUpload) links.push({ href: "/upload", label: "Upload a resource" });
   if (canManageRoles) links.push({ href: "/admin/roles", label: "Roles & representatives" });
+  if (canManageFiles) links.push({ href: "/my-files", label: "My files" });
   if (canManageSubAdmins) links.push({ href: "/admin/sub-admins", label: "Sub Admins" });
   if (canManageStructure) {
     links.push({ href: "/admin/colleges", label: "Manage colleges" });
@@ -161,11 +165,14 @@ function DashboardContent() {
       {verification === "ACTIVE" ? (
         <Alert variant="success">
           <AlertTitle>Profile verified</AlertTitle>
-          <AlertDescription>Uploads open up in the next slice (S3).</AlertDescription>
+          <AlertDescription>Your verified account can upload course resources.</AlertDescription>
         </Alert>
       ) : null}
 
-      <Shortcuts />
+      <Shortcuts
+        canUpload={(user.profile?.kind === "student" || user.profile?.kind === "teacher") && verification === "ACTIVE"}
+        canManageFiles={user.profile?.kind === "teacher" && verification === "ACTIVE"}
+      />
 
       <ProfileCard user={user} />
 

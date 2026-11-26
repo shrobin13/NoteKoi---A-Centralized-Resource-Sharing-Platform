@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { BookOpen } from "lucide-react";
+import { Bell, BookOpen } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLogout, useMe } from "@/features/auth/hooks/use-auth";
+import { useUnreadNotificationCount } from "@/features/notifications/hooks";
 import { cn } from "@/lib/utils";
 
 const AUTH_ROUTES = ["/login", "/register", "/verify-email", "/forgot-password", "/reset-password"];
@@ -24,6 +25,7 @@ export function Navbar() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const me = useMe();
+  const unreadNotifications = useUnreadNotificationCount(Boolean(me.data));
   const logout = useLogout();
 
   const onLogout = async () => {
@@ -62,6 +64,20 @@ export function Navbar() {
               >
                 Dashboard
               </Link>
+
+              <Button asChild variant="ghost" size="icon" title="Notifications" className="relative">
+                <Link
+                  href="/notifications"
+                  aria-label={`Notifications${unreadNotifications.data ? `, ${unreadNotifications.data} unread` : ""}`}
+                >
+                  <Bell aria-hidden />
+                  {unreadNotifications.data ? (
+                    <span className="absolute -right-1 -top-1 flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] leading-4 text-destructive-foreground">
+                      {unreadNotifications.data > 9 ? "9+" : unreadNotifications.data}
+                    </span>
+                  ) : null}
+                </Link>
+              </Button>
 
               {roles.map((role) => (
                 <Badge key={role.id} variant="outline">

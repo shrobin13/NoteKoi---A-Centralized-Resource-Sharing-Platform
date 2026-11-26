@@ -54,19 +54,30 @@ export interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;
   signal?: AbortSignal;
+  baseUrl?: string;
+  credentials?: RequestCredentials;
+  headers?: HeadersInit;
 }
 
 /** Single entry point for every HTTP call (S1-F2). */
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<ApiSuccess<T>> {
   let response: Response;
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  const headers = new Headers(options.headers);
+  const requestBody: BodyInit | undefined =
+    options.body === undefined ? undefined : isFormData ? (options.body as FormData) : JSON.stringify(options.body);
+
+  if (options.body !== undefined && !isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
 
   try {
-    response = await fetch(`${env.apiBaseUrl}${path}`, {
+    response = await fetch(`${options.baseUrl ?? env.apiBaseUrl}${path}`, {
       method: options.method ?? "GET",
-      credentials: "include",
+      credentials: options.credentials ?? "include",
       cache: "no-store",
-      headers: options.body === undefined ? undefined : { "Content-Type": "application/json" },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      headers,
+      body: requestBody,
       signal: options.signal,
     });
   } catch (error) {
