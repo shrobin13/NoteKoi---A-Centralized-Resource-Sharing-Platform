@@ -6,6 +6,10 @@ import { sendResponse } from "../../utils/sendResponse.js";
 import * as resourceService from "./resource.service.js";
 import type {
   AddResourceGrantsInput,
+  BrowseCoursesQuery,
+  BrowseFilesQuery,
+  BrowseSemestersQuery,
+  ChangeResourceVisibilityInput,
   EditResourceMetadataInput,
   ListOwnResourcesQuery,
   ListResourcesQuery,
@@ -117,6 +121,14 @@ export const promoteResource: RequestHandler = async (req, res) => {
   sendResponse(res, { message: "Resource promoted to PLATFORM", data: resource });
 };
 
+/** PATCH /api/v1/resources/:id/visibility — change a CR-scoped file's audience. */
+export const changeResourceVisibility: RequestHandler = async (req, res) => {
+  const { params, body } = getValidated<ChangeResourceVisibilityInput, never, ResourceIdParams>(res);
+  const resource = await resourceService.changeResourceVisibility(requireAuth(req), params.id, body);
+
+  sendResponse(res, { message: "Resource visibility changed", data: resource });
+};
+
 /** POST /api/v1/resources/:id/revoke-platform — return to the uploader's private/college audience (S5-B3). */
 export const revokePlatformResource: RequestHandler = async (req, res) => {
   const { params } = getValidated<never, never, ResourceIdParams>(res);
@@ -140,6 +152,24 @@ export const listResources: RequestHandler = async (req, res) => {
       totalPages: result.totalPages,
     },
   });
+};
+
+export const listBrowseSemesters: RequestHandler = async (_req, res) => {
+  const { query } = getValidated<never, BrowseSemestersQuery>(res);
+  const semesters = await resourceService.listBrowseSemesters(query);
+  sendResponse(res, { message: "Browse semesters loaded", data: semesters });
+};
+
+export const listBrowseCourses: RequestHandler = async (_req, res) => {
+  const { query } = getValidated<never, BrowseCoursesQuery>(res);
+  const courses = await resourceService.listBrowseCourses(query);
+  sendResponse(res, { message: "Browse courses loaded", data: courses });
+};
+
+export const listBrowseFiles: RequestHandler = async (req, res) => {
+  const { query } = getValidated<never, BrowseFilesQuery>(res);
+  const files = await resourceService.listBrowseFiles(viewerFromAuth(req.auth), query);
+  sendResponse(res, { message: "Browse files loaded", data: files });
 };
 
 /** GET /api/v1/resources/mine — the uploader's own rows, any state (S3-F2). */

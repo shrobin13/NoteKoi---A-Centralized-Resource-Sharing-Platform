@@ -8,6 +8,7 @@ import {
   fetchResourceList,
   fetchResourceDetail,
   saveResourceSharing,
+  changeResourceVisibility,
   updateResourceMetadata,
   uploadResource,
   uploadResourceVersion,
@@ -111,6 +112,16 @@ export const useDeleteResourceAsCr = () => {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: resourceKeys.all });
       toast.success("File deleted.");
+    },
+  });
+};
+
+export const useChangeResourceVisibility = () => {
+  const queryClient = useQueryClient();
+  return useMutation<ResourceDetail, unknown, { id: string; audience: "COLLEGE" | "PLATFORM" }>({
+    mutationFn: ({ id, audience }) => changeResourceVisibility(id, audience),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: resourceKeys.all });
     },
   });
 };

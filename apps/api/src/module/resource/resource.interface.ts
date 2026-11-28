@@ -68,6 +68,8 @@ export interface ResourceListItem {
   audience: AudienceType;
   state: ResourceState;
   uploaderType: UploaderType;
+  collegeId: string;
+  sessionId: string | null;
   createdAt: string;
   updatedAt: string;
   uploader: { id: string; name: string };

@@ -7,6 +7,10 @@ import { validateRequest } from "../../middleware/validateRequest.js";
 import * as controller from "./resource.controller.js";
 import {
   addResourceGrantsSchema,
+  browseCoursesQuerySchema,
+  browseFilesQuerySchema,
+  browseSemestersQuerySchema,
+  changeResourceVisibilitySchema,
   listOwnResourcesQuerySchema,
   listResourcesQuerySchema,
   editResourceMetadataSchema,
@@ -59,6 +63,13 @@ resourceRouter.post(
   controller.promoteResource,
 );
 
+resourceRouter.patch(
+  "/:id/visibility",
+  checkAuth,
+  validateRequest({ params: resourceIdParamsSchema, body: changeResourceVisibilitySchema }),
+  controller.changeResourceVisibility,
+);
+
 resourceRouter.post(
   "/:id/revoke-platform",
   checkAuth,
@@ -99,6 +110,27 @@ resourceRouter.get(
   optionalAuth,
   validateRequest({ params: resourceIdParamsSchema }),
   controller.listResourceVersions,
+);
+
+resourceRouter.get(
+  "/browse/semesters",
+  checkAuth,
+  validateRequest({ query: browseSemestersQuerySchema }),
+  controller.listBrowseSemesters,
+);
+
+resourceRouter.get(
+  "/browse/courses",
+  checkAuth,
+  validateRequest({ query: browseCoursesQuerySchema }),
+  controller.listBrowseCourses,
+);
+
+resourceRouter.get(
+  "/browse/files",
+  checkAuth,
+  validateRequest({ query: browseFilesQuerySchema }),
+  controller.listBrowseFiles,
 );
 
 resourceRouter.get(

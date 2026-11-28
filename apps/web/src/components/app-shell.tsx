@@ -206,7 +206,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <button type="button" className="mobile-menu-button" aria-label="Open menu" onClick={() => setDrawerOpen(true)}><Menu /></button>
         <form className="relative min-w-0 flex-1" onSubmit={(event) => event.preventDefault()}>
           <Search className="global-search-icon" />
-          <input className="global-search" aria-label="Search" placeholder="Search notes, courses, teachers" />
+          <input className="global-search" aria-label="Search" placeholder={pathname.startsWith("/colleges") ? "Search all colleges and departments" : "Search notes, courses, teachers"} />
         </form>
         <span className="topbar-spacer" />
         <button type="button" className="topbar-icon-button" aria-label="Toggle dark mode" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>

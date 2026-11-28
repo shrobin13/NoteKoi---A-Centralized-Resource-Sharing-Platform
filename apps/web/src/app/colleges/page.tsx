@@ -1,10 +1,10 @@
-import { CollegeDirectory } from "@/features/academic/components/college-directory";
+import { OtherCollegesBrowser } from "@/features/academic/components/other-colleges-browser";
 
 export const metadata = {
-  title: "Colleges — NoteKoi",
-  description: "Every college sharing resources on NoteKoi.",
+  title: "Other departments and colleges — NoteKoi",
+  description: "Browse files shared by other departments and colleges.",
 };
 
 export default function CollegesPage() {
-  return <CollegeDirectory />;
+  return <OtherCollegesBrowser />;
 }

@@ -107,6 +107,9 @@ interface Fixtures {
 }
 
 let f: Fixtures;
+let browseFixture: { semesterName: string; courseId: string; teacherProfileId: string; visibleIds: string[]; hiddenIds: string[] };
+let browseStudentCookie = "";
+let browseTeacherCookie = "";
 
 const cookies = { studentA: "", studentA2: "", studentB: "", cr: "", teacher: "" };
 
@@ -222,6 +225,22 @@ beforeAll(async () => {
     collegeId: f.a.collegeId,
     departmentIds: [f.a.departmentId],
   });
+  const browseStudent = await signUp({
+    role: "STUDENT",
+    name: "Browse Reader",
+    email: emailOf("browse-student"),
+    collegeId: f.a.collegeId,
+    departmentId: f.a.departmentId,
+    sessionId: f.a.sessionId,
+    regNo: `BR-${runId}`,
+  });
+  const browseTeacher = await signUp({
+    role: "TEACHER",
+    name: "Browse Teacher",
+    email: emailOf("browse-teacher"),
+    collegeId: f.a.collegeId,
+    departmentIds: [f.a.departmentId],
+  });
 
   await Promise.all([
     activate(studentA.userId),
@@ -229,6 +248,8 @@ beforeAll(async () => {
     activate(studentB.userId),
     activate(cr.userId),
     activate(teacher.userId),
+    activate(browseStudent.userId),
+    activate(browseTeacher.userId),
   ]);
 
   await prisma.userRole.create({
@@ -248,6 +269,47 @@ beforeAll(async () => {
   cookies.studentB = studentB.cookie;
   cookies.cr = cr.cookie;
   cookies.teacher = teacher.cookie;
+  browseStudentCookie = browseStudent.cookie;
+  browseTeacherCookie = browseTeacher.cookie;
+
+  const semesterName = `Semester 5 ${runId}`;
+  const teacherProfile = await prisma.teacherProfile.findUniqueOrThrow({ where: { userId: browseTeacher.userId }, select: { id: true } });
+  const semesters = await Promise.all([f.a.sessionId, f.a.otherSessionId].map((sessionId) => prisma.semester.create({
+    data: { collegeId: f.a.collegeId, departmentId: f.a.departmentId, sessionId, name: semesterName, createdById: cr.userId },
+  })));
+  const placements = await Promise.all(semesters.map((entry) => prisma.semesterCourse.create({
+    data: { semesterId: entry.id, courseId: f.a.courseId, teacherProfileId: teacherProfile.id },
+  })));
+  const categories = await Promise.all(placements.map((entry) => prisma.category.create({
+    data: { semesterCourseId: entry.id, name: "Lecture slides", createdById: browseTeacher.userId },
+  })));
+  await prisma.studentProfile.update({ where: { userId: browseStudent.userId }, data: { includeOtherColleges: true } });
+  const publicFileA = await uploadFixture(browseTeacherCookie, `Browse public A ${runId}`, "browse-public-a", {
+    audience: "PLATFORM", semesterCourseId: placements[0]!.id, categoryId: categories[0]!.id,
+  });
+  const publicFileB = await uploadFixture(browseTeacherCookie, `Browse public B ${runId}`, "browse-public-b", {
+    audience: "PLATFORM", semesterCourseId: placements[1]!.id, categoryId: categories[1]!.id,
+  });
+  await prisma.resource.updateMany({ where: { id: { in: [publicFileA.id, publicFileB.id] } }, data: { state: "PENDING" } });
+  await prisma.resourceVersion.updateMany({ where: { resourceId: { in: [publicFileA.id, publicFileB.id] } }, data: { state: "PENDING" } });
+  const permittedFile = await uploadFixture(browseTeacherCookie, `Browse permitted ${runId}`, "browse-permitted", {
+    audience: "PERMITTED", sessionIds: f.a.sessionId, semesterCourseId: placements[0]!.id,
+  });
+  const privateFile = await uploadFixture(browseTeacherCookie, `Browse private ${runId}`, "browse-private", {
+    audience: "PRIVATE", semesterCourseId: placements[0]!.id,
+  });
+  const pendingFile = await uploadFixture(browseTeacherCookie, `Browse pending ${runId}`, "browse-pending", {
+    audience: "PLATFORM", semesterCourseId: placements[0]!.id,
+  });
+  await prisma.resource.update({ where: { id: pendingFile.id }, data: { state: "PENDING" } });
+  await prisma.resourceVersion.updateMany({ where: { resourceId: pendingFile.id }, data: { state: "PENDING" } });
+  browseFixture = {
+    semesterName,
+    courseId: f.a.courseId,
+    teacherProfileId: teacherProfile.id,
+    visibleIds: [publicFileA.id, publicFileB.id],
+    hiddenIds: [permittedFile.id, privateFile.id, pendingFile.id],
+  };
 
   f.platform = await uploadFixture(cr.cookie, `Platform announcement ${runId}`, "platform", {
     audience: "PLATFORM",
@@ -283,6 +345,40 @@ beforeAll(async () => {
 
 describeWithDatabase("resources: browse and search (S3-B4)", () => {
   const ids = (body: { data: { id: string }[] }): string[] => body.data.map((row) => row.id);
+
+  it("requires authentication, validates browse input, aggregates batches and hides non-public files", async () => {
+    const semesterPath = "/api/v1/resources/browse/semesters";
+    expect((await api().get(semesterPath).query({ collegeId: f.a.collegeId, departmentId: f.a.departmentId })).status).toBe(401);
+    expect((await api().get(semesterPath).set("Cookie", browseStudentCookie).query({ collegeId: "bad-id", departmentId: f.a.departmentId })).status).toBe(400);
+
+    const semesters = await api().get(semesterPath).set("Cookie", browseStudentCookie).query({ collegeId: f.a.collegeId, departmentId: f.a.departmentId });
+    expect(semesters.status).toBe(200);
+    expect(semesters.body.data.filter((name: string) => name === browseFixture.semesterName)).toHaveLength(1);
+
+    const courses = await api().get("/api/v1/resources/browse/courses").set("Cookie", browseStudentCookie).query({
+      collegeId: f.a.collegeId, departmentId: f.a.departmentId, semester: browseFixture.semesterName,
+    });
+    expect(courses.status).toBe(200);
+    expect(courses.body.data).toHaveLength(1);
+    expect(courses.body.data[0]).toMatchObject({ courseId: browseFixture.courseId, teacherProfileId: browseFixture.teacherProfileId, categories: ["Lecture slides"] });
+
+    await prisma.resource.updateMany({ where: { id: { in: browseFixture.visibleIds } }, data: { state: "APPROVED" } });
+    await prisma.resourceVersion.updateMany({ where: { resourceId: { in: browseFixture.visibleIds } }, data: { state: "APPROVED" } });
+    const files = await api().get("/api/v1/resources/browse/files").set("Cookie", browseStudentCookie).query({
+      collegeId: f.a.collegeId,
+      departmentId: f.a.departmentId,
+      semester: browseFixture.semesterName,
+      courseId: browseFixture.courseId,
+      teacherProfileId: browseFixture.teacherProfileId,
+      categoryName: "Sir's slides",
+    });
+    expect(files.status).toBe(200);
+    await prisma.resource.updateMany({ where: { id: { in: browseFixture.visibleIds } }, data: { state: "PENDING" } });
+    await prisma.resourceVersion.updateMany({ where: { resourceId: { in: browseFixture.visibleIds } }, data: { state: "PENDING" } });
+    expect(ids(files.body)).toEqual(expect.arrayContaining(browseFixture.visibleIds));
+    expect(ids(files.body)).toHaveLength(browseFixture.visibleIds.length);
+    for (const hiddenId of browseFixture.hiddenIds) expect(ids(files.body)).not.toContain(hiddenId);
+  });
 
   const browse = (query: Record<string, string | number> = {}, cookie?: string) => {
     const call = api().get("/api/v1/resources").query({ keyword: runId, ...query });

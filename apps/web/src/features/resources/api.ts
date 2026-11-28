@@ -105,6 +105,11 @@ export const publishResource = async (
 ): Promise<ResourceDetail> =>
   (await apiPost<ResourceDetail>(`/resources/${id}/publish`, { audience, ...(sessionIds ? { sessionIds } : {}) })).data;
 
+export const changeResourceVisibility = async (
+  id: string,
+  audience: "COLLEGE" | "PLATFORM",
+): Promise<ResourceDetail> => apiPatch<ResourceDetail>(`/resources/${id}/visibility`, { audience });
+
 export const addResourceGrants = async (id: string, sessionIds: string[]): Promise<ResourceDetail> =>
   (await apiPost<ResourceDetail>(`/resources/${id}/grants`, { sessionIds })).data;
 

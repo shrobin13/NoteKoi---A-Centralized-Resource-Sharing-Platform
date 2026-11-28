@@ -102,6 +102,7 @@ export function CourseDirectory() {
           <div className="semester-column-head">
             <span>FILE</span>
             <span>ADDED BY</span>
+            <span>VISIBILITY</span>
             <span>DATE ADDED</span>
             <span>SIZE</span>
             <span>OPEN</span>
@@ -124,7 +125,6 @@ export function CourseDirectory() {
                       ) : null}
                       <span className="type-chip">{extension}</span>
                       {item.versionNo ? <span className="version-chip">v{item.versionNo}</span> : null}
-                      {item.audience === "PLATFORM" ? <span className="everyone-chip">Everyone</span> : null}
                     </div>
                   </div>
                 </div>
@@ -134,6 +134,11 @@ export function CourseDirectory() {
                     <strong>{item.uploader.name}</strong>
                     <span className={`role-chip-small ${roleClass}`}>{roleLabel}</span>
                   </div>
+                </div>
+                <div className="resource-visibility-cell">
+                  <span className={`visibility-chip ${item.audience === "PLATFORM" ? "platform" : item.audience === "PERMITTED" ? "permitted" : "college"}`}>
+                    {item.audience === "PLATFORM" ? "Everyone" : item.audience === "PERMITTED" ? "Your batch" : item.audience === "PRIVATE" ? "Private" : "My college"}
+                  </span>
                 </div>
                 <time dateTime={item.createdAt}>
                   {new Date(item.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
@@ -163,7 +168,7 @@ export function CourseDirectory() {
             <article className="mobile-resource-card" key={item.id}>
               <div className="mobile-resource-main">
                 <span className={`file-tile ${fileExtension(item).toLowerCase()}`}>{fileExtension(item)}</span>
-                <div>
+                <div className="min-w-0">
                   <strong>{item.title}</strong>
                   <p>
                     {item.uploader.name},{" "}
@@ -172,6 +177,7 @@ export function CourseDirectory() {
                   </p>
                 </div>
               </div>
+              <div className="mobile-resource-visibility"><span>Visibility</span><span className={`visibility-chip ${item.audience === "PLATFORM" ? "platform" : item.audience === "PERMITTED" ? "permitted" : "college"}`}>{item.audience === "PLATFORM" ? "Everyone" : item.audience === "PERMITTED" ? "Your batch" : item.audience === "PRIVATE" ? "Private" : "My college"}</span></div>
               <div className="mobile-resource-actions">
                 <Link href={`/resources/${item.id}`}>View</Link>
                 <button type="button" onClick={(event) => event.preventDefault()}>

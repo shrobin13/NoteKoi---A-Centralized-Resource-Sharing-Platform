@@ -114,6 +114,12 @@ export const publishResourceSchema = z
     }
   });
 
+export const changeResourceVisibilitySchema = z.object({
+  audience: z.enum(["COLLEGE", "PLATFORM"]),
+}).strict();
+
+export type ChangeResourceVisibilityInput = z.infer<typeof changeResourceVisibilitySchema>;
+
 export type PublishResourceInput = z.infer<typeof publishResourceSchema>;
 
 export const addResourceGrantsSchema = z
@@ -147,6 +153,24 @@ export const listResourcesQuerySchema = z.object({
   page: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).default(1)),
   pageSize: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(50).default(12)),
 });
+
+const browseScopeSchema = z.object({
+  collegeId: z.uuid("Select a valid college"),
+  departmentId: z.uuid("Select a valid department"),
+  semester: z.string().trim().min(1).max(120),
+});
+
+export const browseSemestersQuerySchema = browseScopeSchema.omit({ semester: true });
+export const browseCoursesQuerySchema = browseScopeSchema;
+export const browseFilesQuerySchema = browseScopeSchema.extend({
+  courseId: z.uuid("Select a valid course"),
+  teacherProfileId: z.union([z.literal("none"), z.uuid()]),
+  categoryName: z.string().trim().min(1).max(120),
+});
+
+export type BrowseSemestersQuery = z.infer<typeof browseSemestersQuerySchema>;
+export type BrowseCoursesQuery = z.infer<typeof browseCoursesQuerySchema>;
+export type BrowseFilesQuery = z.infer<typeof browseFilesQuerySchema>;
 
 export type ListResourcesQuery = z.infer<typeof listResourcesQuerySchema>;
 

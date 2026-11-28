@@ -202,6 +202,11 @@ const approveStudentResource = async (id: string) => {
   expect((await api().post(`/api/v1/moderation/resources/${id}/approve`).set("Cookie", fixtures.cr.cookie)).status).toBe(200);
 };
 
+const approveCrOwnedResource = async (id: string) => {
+  await prisma.resource.update({ where: { id }, data: { state: "APPROVED" } });
+  await prisma.resourceVersion.updateMany({ where: { resourceId: id }, data: { state: "APPROVED" } });
+};
+
 describeWithDatabase("governance workflows (S5-B3)", () => {
   it("escalates a CR-scoped report to the Sub Admin for resolution", async () => {
     const resourceId = await uploadStudentResource(fixtures.student.cookie, `Escalated report ${runId}`);
@@ -264,6 +269,11 @@ describeWithDatabase("governance workflows (S5-B3)", () => {
   it("allows a CR to promote a scoped student COLLEGE file, but not their own upload", async () => {
     const studentResource = await uploadStudentResource(fixtures.student.cookie, `CR promotion ${runId}`);
     await approveStudentResource(studentResource);
+    const otherBatch = await api()
+      .post(`/api/v1/resources/${studentResource}/promote`)
+      .set("Cookie", fixtures.otherCr.cookie);
+    expect(otherBatch.status).toBe(403);
+
     const promoted = await api()
       .post(`/api/v1/resources/${studentResource}/promote`)
       .set("Cookie", fixtures.cr.cookie);
@@ -274,17 +284,147 @@ describeWithDatabase("governance workflows (S5-B3)", () => {
       select: { promotedById: true, promotedAt: true },
     })).toMatchObject({ promotedById: fixtures.cr.userId });
     expect((await prisma.resource.findUniqueOrThrow({ where: { id: studentResource }, select: { promotedAt: true } })).promotedAt).toBeInstanceOf(Date);
+    const restored = await api()
+      .post(`/api/v1/resources/${studentResource}/revoke-platform`)
+      .set("Cookie", fixtures.subAdmin.cookie);
+    expect(restored.status).toBe(200);
+    expect(restored.body.data.audience).toBe("COLLEGE");
 
     const ownResource = await uploadStudentResource(fixtures.cr.cookie, `CR own promotion ${runId}`);
     const ownPromote = await api()
       .post(`/api/v1/resources/${ownResource}/promote`)
       .set("Cookie", fixtures.cr.cookie);
-    expect(ownPromote.status).toBe(404);
+    expect(ownPromote.status).toBe(403);
+  });
 
+  it("requires authentication and refuses student callers", async () => {
+    const resourceId = crypto.randomUUID();
+    const guest = await api().post(`/api/v1/resources/${resourceId}/promote`);
+    expect(guest.status).toBe(401);
+
+    const student = await api()
+      .post(`/api/v1/resources/${resourceId}/promote`)
+      .set("Cookie", fixtures.student.cookie);
+    expect(student.status).toBe(403);
+  });
+
+  it("refuses CR promotion of a teacher file", async () => {
+    const teacherResource = await uploadTeacherResource(fixtures.teacher.cookie, `CR teacher promotion ${runId}`, "PERMITTED");
+    const refused = await api()
+      .post(`/api/v1/resources/${teacherResource}/promote`)
+      .set("Cookie", fixtures.cr.cookie);
+    expect(refused.status).toBe(403);
+  });
+
+  it("returns 409 when a CR tries to promote an already-PLATFORM file", async () => {
+    const resourceId = await uploadStudentResource(fixtures.student.cookie, `Already platform ${runId}`);
+    await approveStudentResource(resourceId);
+    const platformPromotion = await api()
+      .post(`/api/v1/resources/${resourceId}/promote`)
+      .set("Cookie", fixtures.subAdmin.cookie);
+    expect(platformPromotion.status).toBe(200);
+
+    const repeatedPromotion = await api()
+      .post(`/api/v1/resources/${resourceId}/promote`)
+      .set("Cookie", fixtures.cr.cookie);
+    expect(repeatedPromotion.status).toBe(409);
+
+    const restored = await api()
+      .post(`/api/v1/resources/${resourceId}/revoke-platform`)
+      .set("Cookie", fixtures.subAdmin.cookie);
+    expect(restored.status).toBe(200);
+  });
+
+  it("lets a CR change an approved file in both directions and audits each change", async () => {
+    const resourceId = await uploadStudentResource(fixtures.student.cookie, `Visibility round trip ${runId}`);
+    await approveStudentResource(resourceId);
+
+    const platform = await api()
+      .patch(`/api/v1/resources/${resourceId}/visibility`)
+      .set("Cookie", fixtures.cr.cookie)
+      .send({ audience: "PLATFORM" });
+    expect(platform.status).toBe(200);
+    expect(platform.body.data.audience).toBe("PLATFORM");
+    expect(await prisma.resource.findUniqueOrThrow({ where: { id: resourceId }, select: { promotedById: true, promotedAt: true } }))
+      .toMatchObject({ promotedById: fixtures.cr.userId, promotedAt: expect.any(Date) });
+
+    const college = await api()
+      .patch(`/api/v1/resources/${resourceId}/visibility`)
+      .set("Cookie", fixtures.cr.cookie)
+      .send({ audience: "COLLEGE" });
+    expect(college.status).toBe(200);
+    expect(college.body.data.audience).toBe("COLLEGE");
+    expect(await prisma.resource.findUniqueOrThrow({ where: { id: resourceId }, select: { promotedById: true, promotedAt: true } }))
+      .toEqual({ promotedById: null, promotedAt: null });
+
+    const auditRows = await prisma.auditLog.findMany({
+      where: { action: "RESOURCE_VISIBILITY_CHANGED", targetType: "RESOURCE", targetId: resourceId },
+      orderBy: { createdAt: "asc" },
+      select: { actorId: true, metadata: true },
+    });
+    expect(auditRows).toHaveLength(2);
+    expect(auditRows.map((row) => ({ actorId: row.actorId, ...(row.metadata as Record<string, unknown>) }))).toEqual([
+      { actorId: fixtures.cr.userId, previousAudience: "COLLEGE", nextAudience: "PLATFORM" },
+      { actorId: fixtures.cr.userId, previousAudience: "PLATFORM", nextAudience: "COLLEGE" },
+    ]);
+  });
+
+  it("lets a CR change their own approved file visibility", async () => {
+    const resourceId = await uploadStudentResource(fixtures.cr.cookie, `CR own visibility ${runId}`);
+    await approveCrOwnedResource(resourceId);
+    const changed = await api()
+      .patch(`/api/v1/resources/${resourceId}/visibility`)
+      .set("Cookie", fixtures.cr.cookie)
+      .send({ audience: "PLATFORM" });
+    expect(changed.status).toBe(200);
+    expect(changed.body.data.audience).toBe("PLATFORM");
+    const restored = await api()
+      .patch(`/api/v1/resources/${resourceId}/visibility`)
+      .set("Cookie", fixtures.cr.cookie)
+      .send({ audience: "COLLEGE" });
+    expect(restored.status).toBe(200);
+  });
+
+  it("rejects visibility changes without authentication, from students or other batches", async () => {
+    const resourceId = await uploadStudentResource(fixtures.student.cookie, `Visibility scope ${runId}`);
+    await approveStudentResource(resourceId);
+
+    const guest = await api().patch(`/api/v1/resources/${resourceId}/visibility`).send({ audience: "PLATFORM" });
+    expect(guest.status).toBe(401);
+    const student = await api()
+      .patch(`/api/v1/resources/${resourceId}/visibility`)
+      .set("Cookie", fixtures.peer.cookie)
+      .send({ audience: "PLATFORM" });
+    expect(student.status).toBe(403);
     const otherBatch = await api()
-      .post(`/api/v1/resources/${studentResource}/promote`)
-      .set("Cookie", fixtures.otherCr.cookie);
-    expect(otherBatch.status).toBe(404);
+      .patch(`/api/v1/resources/${resourceId}/visibility`)
+      .set("Cookie", fixtures.otherCr.cookie)
+      .send({ audience: "PLATFORM" });
+    expect(otherBatch.status).toBe(403);
+  });
+
+  it("refuses teacher, pending and unchanged visibility values", async () => {
+    const teacherResource = await uploadTeacherResource(fixtures.teacher.cookie, `Teacher visibility ${runId}`, "PLATFORM");
+    const teacherResult = await api()
+      .patch(`/api/v1/resources/${teacherResource}/visibility`)
+      .set("Cookie", fixtures.cr.cookie)
+      .send({ audience: "COLLEGE" });
+    expect(teacherResult.status).toBe(403);
+
+    const pendingResource = await uploadStudentResource(fixtures.student.cookie, `Pending visibility ${runId}`);
+    const pendingResult = await api()
+      .patch(`/api/v1/resources/${pendingResource}/visibility`)
+      .set("Cookie", fixtures.cr.cookie)
+      .send({ audience: "PLATFORM" });
+    expect(pendingResult.status).toBe(409);
+
+    const approvedResource = await uploadStudentResource(fixtures.student.cookie, `Same visibility ${runId}`);
+    await approveStudentResource(approvedResource);
+    const sameValue = await api()
+      .patch(`/api/v1/resources/${approvedResource}/visibility`)
+      .set("Cookie", fixtures.cr.cookie)
+      .send({ audience: "COLLEGE" });
+    expect(sameValue.status).toBe(409);
   });
 
   it("lets a Sub Admin promote and revoke a college teacher file, dropping old grants", async () => {

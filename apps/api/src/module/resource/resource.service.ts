@@ -3,6 +3,7 @@ import type { Readable } from "node:stream";
 import type { Prisma } from "../../../generated/prisma/client.js";
 import type { AudienceType, UploaderType } from "../../../generated/prisma/enums.js";
 import { isClassRepresentative, isPlatformAdmin, type AuthUser } from "../../lib/authz.js";
+import { writeAuditLog } from "../../lib/audit.js";
 import { openStoredFile, removeStoredFile, sha256, storeFile, type StoredObject } from "../../lib/drive.js";
 import { prisma } from "../../lib/prisma.js";
 import {
@@ -29,6 +30,10 @@ import type {
   ListOwnResourcesQuery,
   ListResourcesQuery,
   AddResourceGrantsInput,
+  BrowseCoursesQuery,
+  BrowseFilesQuery,
+  BrowseSemestersQuery,
+  ChangeResourceVisibilityInput,
   PublishResourceInput,
   UploadResourceInput,
 } from "./resource.validation.js";
@@ -947,6 +952,70 @@ export const revokeResourceGrant = async (
 };
 
 /** S5-B3 — CR / Sub Admin / Platform Admin audience promotion. */
+export const changeResourceVisibility = async (
+  auth: AuthUser,
+  id: string,
+  input: ChangeResourceVisibilityInput,
+): Promise<ResourceDetail> => {
+  const crRoles = auth.roles.filter((role) => role.role === "CR" || role.role === "CO_CR");
+  if (crRoles.length === 0) throw AppError.forbidden("Only a CR or Co-CR can change resource visibility", "FORBIDDEN_ROLE");
+
+  const resource = await prisma.resource.findFirst({
+    where: { id, deletedAt: null },
+    select: {
+      id: true,
+      uploaderId: true,
+      uploaderType: true,
+      collegeId: true,
+      departmentId: true,
+      sessionId: true,
+      audience: true,
+      state: true,
+      currentVersion: { select: { state: true } },
+    },
+  });
+  if (!resource) throw resourceNotFound();
+
+  const inOwnBatch = crRoles.some((role) =>
+    role.collegeId === resource.collegeId &&
+    role.departmentId === resource.departmentId &&
+    role.sessionId === resource.sessionId,
+  );
+  if (!inOwnBatch) throw AppError.forbidden("This file is outside your college, department or session", "CR_SCOPE_REQUIRED");
+  if (resource.uploaderType === "TEACHER") throw AppError.forbidden("CRs cannot change teacher file visibility", "CR_TEACHER_FILE_FORBIDDEN");
+  if (resource.state !== "APPROVED" || resource.currentVersion?.state !== "APPROVED") {
+    throw AppError.conflict("Only approved files can have their visibility changed", "RESOURCE_NOT_APPROVED");
+  }
+  if (resource.audience !== "COLLEGE" && resource.audience !== "PLATFORM") {
+    throw AppError.conflict("Only My college and Platform files can be changed", "RESOURCE_VISIBILITY_NOT_CHANGEABLE");
+  }
+  if (resource.audience === input.audience) {
+    throw AppError.conflict(`This file is already set to ${input.audience}`, "RESOURCE_VISIBILITY_UNCHANGED");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const changed = await tx.resource.updateMany({
+      where: { id, audience: resource.audience, state: "APPROVED", deletedAt: null },
+      data: {
+        audience: input.audience,
+        promotedById: input.audience === "PLATFORM" ? auth.userId : null,
+        promotedAt: input.audience === "PLATFORM" ? new Date() : null,
+      },
+    });
+    if (changed.count === 0) throw AppError.conflict("This file's visibility changed before your update", "RESOURCE_VISIBILITY_CHANGED");
+
+    await writeAuditLog(tx, {
+      actorId: auth.userId,
+      action: "RESOURCE_VISIBILITY_CHANGED",
+      targetType: "RESOURCE",
+      targetId: id,
+      metadata: { previousAudience: resource.audience, nextAudience: input.audience },
+    });
+
+    return toResourceDetail(await tx.resource.findUniqueOrThrow({ where: { id }, select: detailSelect }));
+  });
+};
+
 export const promoteResource = async (auth: AuthUser, id: string): Promise<ResourceDetail> => {
   const isAdmin = isPlatformAdmin(auth.roles);
   const subAdminColleges = auth.roles
@@ -983,13 +1052,14 @@ export const promoteResource = async (auth: AuthUser, id: string): Promise<Resou
         role.departmentId === resource.departmentId &&
         role.sessionId === resource.sessionId,
     );
-    if (
-      !inOwnBatch ||
-      resource.uploaderType !== "STUDENT" ||
-      resource.audience !== "COLLEGE" ||
-      resource.uploaderId === auth.userId
-    ) {
-      throw resourceNotFound();
+    if (!inOwnBatch) throw AppError.forbidden("Only a CR or Co-CR of this file's college, department and session can promote it", "CR_SCOPE_REQUIRED");
+    if (resource.uploaderType !== "STUDENT") throw AppError.forbidden("CRs can only promote student files", "CR_STUDENT_FILE_REQUIRED");
+    if (resource.uploaderId === auth.userId) throw AppError.forbidden("CRs cannot promote their own files", "CR_OWN_FILE_FORBIDDEN");
+    if (resource.audience === "PLATFORM") {
+      throw AppError.conflict("This resource is already published to PLATFORM", "RESOURCE_ALREADY_PLATFORM");
+    }
+    if (resource.audience !== "COLLEGE") {
+      throw AppError.forbidden("CRs can only promote student files visible to their college", "CR_COLLEGE_FILE_REQUIRED");
     }
   }
 
@@ -1072,6 +1142,8 @@ const listSelect = {
   audience: true,
   state: true,
   uploaderType: true,
+  collegeId: true,
+  sessionId: true,
   createdAt: true,
   updatedAt: true,
   uploader: { select: { id: true, name: true } },
@@ -1098,6 +1170,8 @@ const toListItem = (row: ListRow): ResourceListItem => ({
   audience: row.audience,
   state: row.state,
   uploaderType: row.uploaderType,
+  collegeId: row.collegeId,
+  sessionId: row.sessionId,
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString(),
   uploader: row.uploader,
@@ -1109,6 +1183,72 @@ const toListItem = (row: ListRow): ResourceListItem => ({
   mimeType: row.currentVersion?.physicalFile?.mimeType ?? null,
   sizeBytes: row.currentVersion?.physicalFile ? Number(row.currentVersion.physicalFile.sizeBytes) : null,
 });
+
+export const listBrowseSemesters = (query: BrowseSemestersQuery) =>
+  prisma.semester.findMany({
+    where: { collegeId: query.collegeId, departmentId: query.departmentId },
+    distinct: ["name"],
+    orderBy: { name: "asc" },
+    select: { name: true },
+  }).then((rows) => rows.map((row) => row.name));
+
+export const listBrowseCourses = async (query: BrowseCoursesQuery) => {
+  const placements = await prisma.semesterCourse.findMany({
+    where: {
+      semester: { collegeId: query.collegeId, departmentId: query.departmentId, name: query.semester },
+      course: { isActive: true },
+    },
+    orderBy: [{ course: { name: "asc" } }, { teacherProfile: { user: { name: "asc" } } }],
+    select: {
+      courseId: true,
+      name: true,
+      teacherProfileId: true,
+      course: { select: { name: true } },
+      teacherProfile: { select: { user: { select: { name: true } } } },
+      categories: { select: { name: true } },
+    },
+  });
+  const grouped = new Map<string, { courseId: string; name: string; teacherProfileId: string | null; teacherName: string | null; categories: Set<string> }>();
+  for (const placement of placements) {
+    const key = `${placement.courseId}:${placement.teacherProfileId ?? "none"}`;
+    const course = grouped.get(key) ?? {
+      courseId: placement.courseId,
+      name: placement.name ?? placement.course.name,
+      teacherProfileId: placement.teacherProfileId,
+      teacherName: placement.teacherProfile?.user.name ?? null,
+      categories: new Set<string>(),
+    };
+    for (const category of placement.categories) {
+      if (category.name.toLowerCase() !== "sir's slides") course.categories.add(category.name);
+    }
+    grouped.set(key, course);
+  }
+  return [...grouped.values()].map((course) => ({ ...course, categories: [...course.categories].sort((a, b) => a.localeCompare(b)) }));
+};
+
+export const listBrowseFiles = async (viewer: Viewer, query: BrowseFilesQuery): Promise<ResourceListItem[]> => {
+  const filters: Prisma.ResourceWhereInput[] = [
+    buildVisibilityWhere(viewer),
+    { uploaderType: "TEACHER", audience: { in: viewer.includeOtherColleges ? ["PLATFORM", "COLLEGE"] : ["PLATFORM"] } },
+    { collegeId: query.collegeId, departmentId: query.departmentId },
+    {
+      semesterCourse: {
+        is: {
+          courseId: query.courseId,
+          teacherProfileId: query.teacherProfileId === "none" ? null : query.teacherProfileId,
+          semester: { is: { collegeId: query.collegeId, departmentId: query.departmentId, name: query.semester } },
+        },
+      },
+    },
+  ];
+  if (query.categoryName !== "Sir's slides") filters.push({ category: { is: { name: query.categoryName } } });
+  const rows = await prisma.resource.findMany({
+    where: { AND: filters },
+    orderBy: { createdAt: "desc" },
+    select: listSelect,
+  });
+  return rows.map(toListItem);
+};
 
 /** The filters every list shares (course / department / college / type / keyword). */
 const buildListFilters = (query: ListResourcesQuery): Prisma.ResourceWhereInput[] => {

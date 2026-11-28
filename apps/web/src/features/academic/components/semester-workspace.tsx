@@ -10,13 +10,14 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ErrorState, LoadingState } from "@/components/states";
 import { useMe } from "@/features/auth/hooks/use-auth";
-import { useDeleteResourceAsCr, useResourceList } from "@/features/resources/hooks";
+import { useChangeResourceVisibility, useDeleteResourceAsCr, useResourceList } from "@/features/resources/hooks";
 import type { ResourceListItem, ResourceType } from "@/features/resources/types";
 import { env } from "@/lib/env";
 import { getErrorMessage } from "@/lib/api";
@@ -86,6 +87,12 @@ export function SemesterWorkspace({ semesterId }: { semesterId: string }) {
   const [teacherProfileId, setTeacherProfileId] = useState("");
   const [categoryName, setCategoryName] = useState("");
   const [dialogError, setDialogError] = useState("");
+  const [visibilityItem, setVisibilityItem] = useState<ResourceListItem | null>(null);
+  const [visibilityAnchor, setVisibilityAnchor] = useState<HTMLButtonElement | null>(null);
+  const [visibilityAudience, setVisibilityAudience] = useState<"COLLEGE" | "PLATFORM">("COLLEGE");
+  const [visibilityError, setVisibilityError] = useState("");
+  const [visibilityPosition, setVisibilityPosition] = useState({ left: 0, top: 0 });
+  const visibilityPopoverRef = useRef<HTMLDivElement>(null);
 
   const selectedCourse = semester?.courses.find((course) => course.id === selectedCourseId) ?? semester?.courses[0];
   const categories = selectedCourse?.categories ?? [];
@@ -115,6 +122,39 @@ export function SemesterWorkspace({ semesterId }: { semesterId: string }) {
   const updateCategory = useRenameSemesterCategory();
   const removeCategory = useRemoveSemesterCategory();
   const deleteResource = useDeleteResourceAsCr();
+  const changeVisibilityMutation = useChangeResourceVisibility();
+
+  const closeVisibilityPopover = () => {
+    setVisibilityItem(null);
+    setVisibilityAnchor(null);
+    setVisibilityError("");
+  };
+
+  useEffect(() => {
+    if (!visibilityAnchor) return;
+    const updatePosition = () => {
+      const bounds = visibilityAnchor.getBoundingClientRect();
+      setVisibilityPosition({ left: Math.max(8, Math.min(bounds.left, window.innerWidth - 318)), top: bounds.bottom + 6 });
+    };
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && !visibilityPopoverRef.current?.contains(target) && !visibilityAnchor.contains(target)) closeVisibilityPopover();
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeVisibilityPopover();
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [visibilityAnchor]);
 
   useEffect(() => {
     if (!semester?.courses.length) {
@@ -209,6 +249,54 @@ export function SemesterWorkspace({ semesterId }: { semesterId: string }) {
     openDialog({ kind: "delete-file", item });
   };
 
+  const canPromoteFile = (item: ResourceListItem) => {
+    if (!user || !studentProfile || item.uploaderType === "TEACHER" || (item.audience !== "COLLEGE" && item.audience !== "PLATFORM")) return false;
+    const { college, department, session } = studentProfile;
+    return item.collegeId === college.id && item.department.id === department.id && item.sessionId === session.id &&
+      user.roles.some((role) =>
+        (role.role === "CR" || role.role === "CO_CR") &&
+        role.college?.id === college.id && role.department?.id === department.id && role.session?.id === session.id,
+      );
+  };
+
+  const renderVisibilityChip = (item: ResourceListItem) => {
+    const audience = item.audience === "PLATFORM" ? "platform" : item.audience === "PERMITTED" ? "permitted" : "college";
+    const label = item.audience === "PLATFORM" ? "Everyone" : item.audience === "PERMITTED" ? "Your batch" : item.audience === "PRIVATE" ? "Private" : "My college";
+    if (!canPromoteFile(item)) return <span className={`visibility-chip ${audience}`}>{label}</span>;
+    return (
+      <button
+        type="button"
+        className={`visibility-chip ${audience} clickable`}
+        aria-haspopup="dialog"
+        aria-expanded={visibilityItem?.id === item.id}
+        aria-controls="resource-visibility-dialog"
+        onClick={(event) => {
+          if (visibilityItem?.id === item.id) closeVisibilityPopover();
+          else {
+            setVisibilityItem(item);
+            setVisibilityAnchor(event.currentTarget);
+            setVisibilityAudience(item.audience === "PLATFORM" ? "PLATFORM" : "COLLEGE");
+            setVisibilityError("");
+          }
+        }}
+      >
+        {label}<ChevronDown aria-hidden="true" />
+      </button>
+    );
+  };
+
+  const changeVisibility = async () => {
+    if (!visibilityItem || visibilityAudience === visibilityItem.audience) return;
+    setVisibilityError("");
+    try {
+      await changeVisibilityMutation.mutateAsync({ id: visibilityItem.id, audience: visibilityAudience });
+      await resources.refetch();
+      closeVisibilityPopover();
+    } catch (error) {
+      setVisibilityError(getErrorMessage(error));
+    }
+  };
+
   if (semesterQuery.isPending) return <LoadingState label="Loading semester…" />;
   if (semesterQuery.isError || !semester) {
     return <ErrorState title="Could not load semester" description={semesterQuery.error instanceof Error ? semesterQuery.error.message : undefined} onRetry={() => void semesterQuery.refetch()} />;
@@ -224,6 +312,7 @@ export function SemesterWorkspace({ semesterId }: { semesterId: string }) {
           <span className={`file-tile ${ext.toLowerCase()}`}>{ext}</span>
           <div className="mobile-resource-title"><strong>{item.title}</strong><p>{item.uploader.name}, {new Date(item.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}, {fileSize(item.sizeBytes)}</p></div>
         </div>
+        <div className="mobile-resource-visibility"><span>Visibility</span>{teacherFile ? <LockKeyhole aria-label="Teacher file" /> : null}{renderVisibilityChip(item)}</div>
         <div className="mobile-resource-actions">
           <Link href={`/resources/${item.id}`}>View</Link>
           <a href={`${env.apiBaseUrl}/resources/${item.id}/download`}>Download</a>
@@ -239,7 +328,6 @@ export function SemesterWorkspace({ semesterId }: { semesterId: string }) {
               {activeCategory ? <span className="category-chip">{activeCategory.name}</span> : <span className="category-chip">Sir&apos;s slides</span>}
               <span className={`type-chip ${ext.toLowerCase()}`}>{ext}</span>
               {item.versionNo ? <span className="version-chip">v{item.versionNo}</span> : null}
-              {item.audience === "PLATFORM" ? <span className="everyone-chip">Everyone</span> : null}
             </div>
           </div>
         </div>
@@ -247,6 +335,7 @@ export function SemesterWorkspace({ semesterId }: { semesterId: string }) {
           <span className={`avatar ${role.className}`}>{item.uploader.name.slice(0, 1).toUpperCase()}</span>
           <div><strong>{item.uploader.name}</strong><span className={`role-chip-small ${role.className}`}>{role.label}</span></div>
         </div>
+        <div className="resource-visibility-cell">{renderVisibilityChip(item)}</div>
         <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</time>
         <span>{fileSize(item.sizeBytes)}</span>
         <div className="row-actions">
@@ -338,7 +427,7 @@ export function SemesterWorkspace({ semesterId }: { semesterId: string }) {
 
         {selectedCategoryId === "auto" ? <div className="auto-category-banner"><LockKeyhole />Files your teacher shares with your batch appear here automatically.</div> : null}
         <div className="semester-table desktop-resource-table">
-          <div className="semester-column-head"><span>FILE</span><span>ADDED BY</span><span>DATE ADDED</span><span>SIZE</span><span>OPEN</span></div>
+          <div className="semester-column-head"><span>FILE</span><span>ADDED BY</span><span>VISIBILITY</span><span>DATE ADDED</span><span>SIZE</span><span>OPEN</span></div>
           {resources.isPending ? <div className="semester-inline-state">Loading files…</div> : null}
           {resources.isError ? <div className="semester-inline-error">{resources.error instanceof Error ? resources.error.message : "Could not load files."}<button type="button" onClick={() => void resources.refetch()}>Retry</button></div> : null}
           {visibleResources.map((item) => renderResourceRow(item))}
@@ -352,6 +441,39 @@ export function SemesterWorkspace({ semesterId }: { semesterId: string }) {
           <div className="semester-empty"><strong>No files in this category yet.</strong><Link href={`/upload?semesterId=${semester.id}&semesterCourseId=${selectedCourse?.id ?? ""}&categoryId=${activeCategory?.id ?? ""}`}><Upload />Upload</Link></div>
         ) : null}
       </section>
+
+      {visibilityItem && visibilityAnchor && typeof document !== "undefined" ? createPortal(
+        <div className="visibility-popover-layer" onMouseDown={(event) => { if (event.target === event.currentTarget) closeVisibilityPopover(); }}>
+          <div
+            ref={visibilityPopoverRef}
+            id="resource-visibility-dialog"
+            className="visibility-popover"
+            role="dialog"
+            aria-labelledby="visibility-popover-title"
+            style={visibilityPosition}
+          >
+            <h2 id="visibility-popover-title">Who can see this file</h2>
+            <label className={`visibility-option ${visibilityAudience === "COLLEGE" ? "selected" : ""}`}>
+              <input type="radio" name="resource-visibility" checked={visibilityAudience === "COLLEGE"} onChange={() => setVisibilityAudience("COLLEGE")} />
+              <span><strong>My college only</strong><small>Students of your college</small></span>
+            </label>
+            <label className={`visibility-option ${visibilityAudience === "PLATFORM" ? "selected" : ""}`}>
+              <input type="radio" name="resource-visibility" checked={visibilityAudience === "PLATFORM"} onChange={() => setVisibilityAudience("PLATFORM")} />
+              <span><strong>Platform</strong><small>Everyone, including other colleges</small></span>
+            </label>
+            {visibilityAudience === "PLATFORM" ? <p className="visibility-notice">If you change this to Platform, all students of other colleges can also see and download this file. You can change it back at any time.</p> : null}
+            {visibilityAudience === "COLLEGE" && visibilityItem.audience === "PLATFORM" ? <p className="visibility-notice">Students of other colleges will no longer see this file.</p> : null}
+            {visibilityError ? <p className="visibility-error" role="alert">{visibilityError}</p> : null}
+            <div className="visibility-actions">
+              <button type="button" className="visibility-cancel" onClick={closeVisibilityPopover} disabled={changeVisibilityMutation.isPending}>Cancel</button>
+              <button type="button" className="visibility-confirm" onClick={() => void changeVisibility()} disabled={visibilityAudience === visibilityItem.audience || changeVisibilityMutation.isPending}>
+                {changeVisibilityMutation.isPending ? "Changing…" : visibilityAudience === "PLATFORM" ? "Change to Platform" : "Change to My college only"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
 
       {dialog ? <div className="semester-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog(); }}>
         <section className="semester-dialog" role="dialog" aria-modal="true" aria-labelledby="semester-dialog-title">
