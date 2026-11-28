@@ -126,6 +126,8 @@ interface UploadContext {
   collegeId: string;
   departmentId: string;
   courseId: string;
+  semesterCourseId: string | null;
+  categoryId: string | null;
   audience: AudienceType;
   state: "PENDING" | "APPROVED";
   /** Batches the resource is shared with; non-empty only for PERMITTED. */
@@ -196,6 +198,37 @@ const resolveUploadContext = async (
     throw AppError.badRequest("That college is deactivated", "COLLEGE_INACTIVE");
   }
 
+  let semesterCourseId: string | null = null;
+  let categoryId: string | null = null;
+  if (input.semesterCourseId) {
+    const placement = await prisma.semesterCourse.findUnique({
+      where: { id: input.semesterCourseId },
+      select: {
+        id: true,
+        courseId: true,
+        teacherProfileId: true,
+        semester: { select: { collegeId: true, departmentId: true, sessionId: true } },
+      },
+    });
+    if (
+      !placement || placement.courseId !== course.id || placement.semester.collegeId !== collegeId ||
+      placement.semester.departmentId !== course.departmentId ||
+      (policy.isStudent && placement.semester.sessionId !== policy.sessionId) ||
+      (profile?.kind === "teacher" && placement.teacherProfileId !== profile.id)
+    ) {
+      throw AppError.badRequest("Choose a semester course that matches this resource", "INVALID_SEMESTER_COURSE");
+    }
+    semesterCourseId = placement.id;
+    if (input.categoryId) {
+      const category = await prisma.category.findFirst({
+        where: { id: input.categoryId, semesterCourseId: placement.id, isSystem: false },
+        select: { id: true },
+      });
+      if (!category) throw AppError.badRequest("Choose a category in this semester course", "INVALID_CATEGORY");
+      categoryId = category.id;
+    }
+  }
+
   const audience = input.audience ?? policy.defaultAudience;
 
   if (!policy.allowedAudiences.includes(audience)) {
@@ -226,6 +259,8 @@ const resolveUploadContext = async (
     collegeId,
     departmentId: course.departmentId,
     courseId: course.id,
+    semesterCourseId,
+    categoryId,
     audience,
     state: policy.state,
     sessionIds,
@@ -398,6 +433,8 @@ export const uploadResource = async (
           collegeId: context.collegeId,
           departmentId: context.departmentId,
           courseId: context.courseId,
+          semesterCourseId: context.semesterCourseId,
+          categoryId: context.categoryId,
           sessionId: context.policy.sessionId,
           title: input.title,
           description: input.description ?? null,
@@ -456,6 +493,36 @@ export const uploadResource = async (
 };
 
 const resourceNotFound = (): AppError => AppError.notFound("Resource not found", "RESOURCE_NOT_FOUND");
+
+export const deleteResourceAsCr = async (auth: AuthUser, id: string): Promise<ResourceDetail> => {
+  if (auth.profile?.kind !== "student" || auth.profile.verificationStatus !== "ACTIVE" || !isClassRepresentative(auth.roles)) {
+    throw AppError.forbidden("Only an active CR or Co-CR can delete shared files", "FORBIDDEN_ROLE");
+  }
+  const resource = await prisma.resource.findUnique({
+    where: { id },
+    select: { id: true, uploaderType: true, collegeId: true, departmentId: true, sessionId: true, state: true },
+  });
+  if (!resource || resource.state === "DELETED") throw resourceNotFound();
+  if (resource.uploaderType === "TEACHER") {
+    throw AppError.forbidden("A CR cannot delete a teacher's file", "TEACHER_RESOURCE_DELETE_FORBIDDEN");
+  }
+  const inScope = auth.roles.some((role) =>
+    (role.role === "CR" || role.role === "CO_CR") && role.collegeId === resource.collegeId &&
+    role.departmentId === resource.departmentId && role.sessionId === resource.sessionId,
+  );
+  if (
+    !inScope || auth.profile.collegeId !== resource.collegeId || auth.profile.departmentId !== resource.departmentId ||
+    auth.profile.sessionId !== resource.sessionId
+  ) {
+    throw AppError.forbidden("This file is outside your CR college, department and session", "RESOURCE_SCOPE_FORBIDDEN");
+  }
+  const deleted = await prisma.resource.update({
+    where: { id },
+    data: { state: "DELETED", deletedAt: new Date(), deletedById: auth.userId, semesterCourseId: null, categoryId: null },
+    select: detailSelect,
+  });
+  return toResourceDetail(deleted);
+};
 
 /** S3-B7 — uploader-only metadata edits; scope and state are never writable here. */
 export const editResourceMetadata = async (
@@ -1048,6 +1115,8 @@ const buildListFilters = (query: ListResourcesQuery): Prisma.ResourceWhereInput[
   const filters: Prisma.ResourceWhereInput[] = [];
 
   if (query.courseId) filters.push({ courseId: query.courseId });
+  if (query.semesterCourseId) filters.push({ semesterCourseId: query.semesterCourseId });
+  if (query.categoryId) filters.push({ categoryId: query.categoryId });
   if (query.departmentId) filters.push({ departmentId: query.departmentId });
   if (query.collegeId) filters.push({ collegeId: query.collegeId });
   if (query.resourceType) filters.push({ resourceType: query.resourceType });

@@ -73,6 +73,8 @@ export interface UploadTokenResult {
 
 export interface ResourceListFilters {
   courseId?: string;
+  semesterCourseId?: string;
+  categoryId?: string;
   keyword?: string;
   resourceType?: ResourceType;
   sort?: "newest" | "oldest" | "title";

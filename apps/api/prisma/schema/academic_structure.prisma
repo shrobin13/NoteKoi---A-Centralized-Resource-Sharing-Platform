@@ -39,6 +39,7 @@ model CollegeDepartment {
   department      Department       @relation(fields: [departmentId], references: [id])
   studentProfiles StudentProfile[]
   resources       Resource[]
+  semesters       Semester[]
 
   @@unique([collegeId, departmentId], name: "unique_college_department")
   @@index([departmentId], name: "idx_college_department")
@@ -59,6 +60,7 @@ model Session {
   roles           UserRole[]
   resources       Resource[]
   batchGrants     ResourceBatchGrant[]
+  semesters       Semester[]
 
   @@unique([departmentId, name], name: "unique_session_department_name")
   @@unique([id, departmentId], name: "unique_session_id_department_id")
@@ -77,6 +79,7 @@ model Course {
   department   Department @relation(fields: [departmentId], references: [id])
   folders      Folder[]
   resources    Resource[]
+  semesterCourses SemesterCourse[]
 
   @@unique([departmentId, name], name: "unique_course_department_name")
   @@unique([id, departmentId], name: "unique_course_id_department_id")

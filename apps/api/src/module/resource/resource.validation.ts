@@ -53,10 +53,15 @@ export const uploadResourceSchema = z
     resourceType: z.enum(RESOURCE_TYPES, "Select a resource type"),
     audience: z.enum(AUDIENCES, "Select an audience").optional(),
     courseId: z.uuid("Select a valid course"),
+    semesterCourseId: z.preprocess(emptyToUndefined, z.uuid("Select a valid semester course").optional()),
+    categoryId: z.preprocess(emptyToUndefined, z.uuid("Select a valid category").optional()),
     collegeId: z.preprocess(emptyToUndefined, z.uuid("Select a valid college").optional()),
     sessionIds: uuidList,
   })
   .superRefine((value, ctx) => {
+    if (value.categoryId && !value.semesterCourseId) {
+      ctx.addIssue({ code: "custom", path: ["semesterCourseId"], message: "Choose a semester course for this category" });
+    }
     if (value.audience === "PERMITTED" && (!value.sessionIds || value.sessionIds.length === 0)) {
       ctx.addIssue({
         code: "custom",
@@ -129,6 +134,8 @@ export type AddResourceGrantsInput = z.infer<typeof addResourceGrantsSchema>;
 /** S3-B4 — `GET /resources` query. Search is course + keyword + type (A.1/A.4). */
 export const listResourcesQuerySchema = z.object({
   courseId: z.preprocess(emptyToUndefined, z.uuid("Select a valid course").optional()),
+  semesterCourseId: z.preprocess(emptyToUndefined, z.uuid("Select a valid semester course").optional()),
+  categoryId: z.preprocess(emptyToUndefined, z.uuid("Select a valid category").optional()),
   departmentId: z.preprocess(emptyToUndefined, z.uuid("Select a valid department").optional()),
   collegeId: z.preprocess(emptyToUndefined, z.uuid("Select a valid college").optional()),
   resourceType: z.preprocess(emptyToUndefined, z.enum(RESOURCE_TYPES, "Select a resource type").optional()),

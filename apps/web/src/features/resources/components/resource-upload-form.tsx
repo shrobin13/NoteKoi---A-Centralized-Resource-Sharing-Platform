@@ -14,7 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useMe } from "@/features/auth/hooks/use-auth";
-import { useCourseList } from "@/features/academic/hooks";
+import { useSemester, useSemesters } from "@/features/academic/semester-hooks";
 import { getErrorMessage } from "@/lib/api";
 import { resourceUploadSchema, type ResourceUploadInput } from "../schemas";
 import { useUploadResource } from "../hooks";
@@ -27,15 +27,9 @@ export function ResourceUploadForm() {
   const profile = user?.profile;
   const isStudent = profile?.kind === "student";
   const isTeacher = profile?.kind === "teacher";
-  const departmentIds =
-    profile?.kind === "student"
-      ? [profile.department.id]
-      : profile?.kind === "teacher"
-        ? profile.departments.map((department) => department.id)
-        : [];
   const canUpload = Boolean(profile && profile.verificationStatus === "ACTIVE" && (isStudent || isTeacher));
-  const courses = useCourseList({ status: "active" }, canUpload);
-  const availableCourses = courses.data?.filter((course) => departmentIds.includes(course.departmentId)) ?? [];
+  const semesters = useSemesters(canUpload);
+  const [selectedSemesterId, setSelectedSemesterId] = useState("");
   const upload = useUploadResource();
   const fileInput = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -51,9 +45,35 @@ export function ResourceUploadForm() {
       tags: "",
       resourceType: "NOTES",
       courseId: "",
+      semesterCourseId: "",
+      categoryId: "",
       audience: "COLLEGE",
     },
   });
+
+  const selectedSemester = useSemester(selectedSemesterId);
+  const selectedSemesterCourseId = form.watch("semesterCourseId");
+  const selectedSemesterCourse = selectedSemester.data?.courses.find((item) => item.id === selectedSemesterCourseId);
+
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("semesterId");
+    const initial = semesters.data?.find((item) => item.id === requested) ?? semesters.data?.[0];
+    if (initial && !selectedSemesterId) setSelectedSemesterId(initial.id);
+  }, [selectedSemesterId, semesters.data]);
+
+  useEffect(() => {
+    form.setValue("courseId", selectedSemesterCourse?.courseId ?? "");
+  }, [form, selectedSemesterCourse]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedCourseId = params.get("semesterCourseId");
+    const requestedCategoryId = params.get("categoryId");
+    if (requestedCourseId && selectedSemester.data?.courses.some((course) => course.id === requestedCourseId)) {
+      form.setValue("semesterCourseId", requestedCourseId);
+      if (requestedCategoryId) form.setValue("categoryId", requestedCategoryId);
+    }
+  }, [form, selectedSemester.data]);
 
   useEffect(() => {
     if (isTeacher) form.setValue("audience", "PRIVATE");
@@ -76,6 +96,8 @@ export function ResourceUploadForm() {
         tags: "",
         resourceType: "NOTES",
         courseId: "",
+        semesterCourseId: "",
+        categoryId: "",
         audience: isTeacher ? "PRIVATE" : "COLLEGE",
       });
       setFile(null);
@@ -121,33 +143,41 @@ export function ResourceUploadForm() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Upload a resource" description={scopeLabel} />
 
-      {courses.isPending ? <LoadingState label="Loading courses…" /> : null}
-      {courses.isError ? (
+      {semesters.isPending ? <LoadingState label="Loading semesters…" /> : null}
+      {semesters.isError ? (
         <ErrorState
-          title="Could not load courses"
-          description={courses.error instanceof Error ? courses.error.message : undefined}
-          onRetry={() => void courses.refetch()}
+          title="Could not load semesters"
+          description={semesters.error instanceof Error ? semesters.error.message : undefined}
+          onRetry={() => void semesters.refetch()}
         />
       ) : null}
-      {availableCourses.length === 0 && courses.data ? (
-        <EmptyState title="No active courses" description="Ask your department administrator to add a course." />
+      {semesters.data?.length === 0 ? (
+        <EmptyState title="No semesters available" description="Ask your class representative to create a semester." />
       ) : null}
 
-      {availableCourses.length > 0 ? (
+      {semesters.data && semesters.data.length > 0 ? (
         <Card>
           <CardContent className="p-5 sm:p-6">
             <form className="grid gap-5 md:grid-cols-2" onSubmit={onSubmit} noValidate>
               <FormField id="resource-title" label="Title" error={form.formState.errors.title?.message}>
                 <Input id="resource-title" autoComplete="off" {...form.register("title")} />
               </FormField>
-              <FormField id="resource-course" label="Course" error={form.formState.errors.courseId?.message}>
-                <Select id="resource-course" {...form.register("courseId")}>
+              <FormField id="resource-semester" label="Semester">
+                <Select id="resource-semester" value={selectedSemesterId} onChange={(event) => { setSelectedSemesterId(event.target.value); form.setValue("semesterCourseId", ""); form.setValue("categoryId", ""); form.setValue("courseId", ""); }}>
+                  <option value="">Choose a semester</option>
+                  {semesters.data.map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
+                </Select>
+              </FormField>
+              <FormField id="resource-course" label="Course" error={form.formState.errors.semesterCourseId?.message}>
+                <Select id="resource-course" {...form.register("semesterCourseId", { onChange: () => { form.setValue("categoryId", ""); } })} disabled={!selectedSemesterId || selectedSemester.isPending}>
                   <option value="">Choose a course</option>
-                  {availableCourses.map((course) => (
-                    <option key={course.id} value={course.id}>
-                      {course.name}{course.semester ? ` · Semester ${course.semester}` : ""}
-                    </option>
-                  ))}
+                  {selectedSemester.data?.courses.map((course) => <option key={course.id} value={course.id}>{course.name}</option>)}
+                </Select>
+              </FormField>
+              <FormField id="resource-category" label="Category" error={form.formState.errors.categoryId?.message}>
+                <Select id="resource-category" {...form.register("categoryId")} disabled={!selectedSemesterCourseId}>
+                  <option value="">Choose a category</option>
+                  {selectedSemesterCourse?.categories.filter((category) => !category.isSystem).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
                 </Select>
               </FormField>
               <FormField id="resource-type" label="Resource type" error={form.formState.errors.resourceType?.message}>
@@ -195,7 +225,7 @@ export function ResourceUploadForm() {
                 </FormField>
               </div>
               <div className="md:col-span-2 flex justify-end">
-                <Button type="submit" disabled={isSubmitting || upload.isPending || courses.isPending}>
+                <Button type="submit" disabled={isSubmitting || upload.isPending || semesters.isPending || selectedSemester.isPending}>
                   <FileUp aria-hidden />
                   {isSubmitting ? "Uploading…" : "Upload resource"}
                 </Button>

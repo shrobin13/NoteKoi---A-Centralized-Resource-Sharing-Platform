@@ -9,6 +9,8 @@ export const resourceUploadSchema = z.object({
   tags: z.string().trim().max(320, "Keep tags under 320 characters"),
   resourceType: z.enum(RESOURCE_TYPES),
   courseId: z.uuid("Choose a course"),
+  semesterCourseId: z.uuid("Choose a semester course"),
+  categoryId: z.uuid("Choose a category"),
   audience: z.enum(RESOURCE_AUDIENCES),
 });
 

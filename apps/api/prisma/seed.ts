@@ -66,6 +66,7 @@ const ACCOUNTS = {
   teacher1: demoEmail("teacher1"),
   teacher2: demoEmail("teacher2"),
   teacherMulti: demoEmail("teacher-multi"),
+  teacherDiscrete: demoEmail("teacher-discrete"),
   teacherB: demoEmail("teacher-b"),
   teacherPending: demoEmail("teacher-pending"),
   suspended: demoEmail("suspended"),
@@ -266,6 +267,14 @@ const DEMO_ROWS: readonly DemoRow[] = [
     note: "other-college teacher",
   },
   {
+    email: ACCOUNTS.teacherDiscrete,
+    role: "Teacher (ACTIVE)",
+    college: "College A",
+    department: "CSE",
+    session: "—",
+    note: "assigned to Discrete Math in Semester 3",
+  },
+  {
     email: ACCOUNTS.teacherPending,
     role: "Teacher (PENDING_VERIFICATION)",
     college: "College A",
@@ -308,10 +317,23 @@ interface DemoResourceSeed {
   audience: AudienceType;
   state: "PENDING" | "APPROVED" | "REJECTED";
   grantSessionIds?: string[];
+  semesterCourseId?: string;
+  categoryId?: string;
+  title?: string;
+  resourceType?: string;
+  mimeType?: string;
+  fileExtension?: string;
+  fileSizeBytes?: number;
 }
 
 const seedDemoResource = async (sample: DemoResourceSeed): Promise<void> => {
-  const buffer = Buffer.from(`%PDF-1.4 NoteKoi demo resource ${sample.key}\n`, "utf8");
+  const mimeType = sample.mimeType ?? "application/pdf";
+  const extension = sample.fileExtension ?? "pdf";
+  const payload = Buffer.from(`NoteKoi demo resource ${sample.key}\n`, "utf8");
+  const buffer = sample.fileSizeBytes
+    ? Buffer.alloc(Math.max(payload.length, sample.fileSizeBytes))
+    : Buffer.concat([Buffer.from("%PDF-1.4\n"), payload]);
+  payload.copy(buffer);
   const contentHash = sha256(buffer);
   const existingFile = await prisma.physicalFile.findUnique({
     where: { contentHash },
@@ -323,8 +345,8 @@ const seedDemoResource = async (sample: DemoResourceSeed): Promise<void> => {
   if (!existingFile) {
     stored = await storeFile({
       buffer,
-      fileName: `${sample.key}.pdf`,
-      mimeType: "application/pdf",
+      fileName: `${sample.key}.${extension}`,
+      mimeType,
       fileId: physicalFileId,
     });
   }
@@ -337,7 +359,7 @@ const seedDemoResource = async (sample: DemoResourceSeed): Promise<void> => {
             id: physicalFileId,
             contentHash,
             sizeBytes: BigInt(buffer.length),
-            mimeType: "application/pdf",
+            mimeType,
             storageProvider: stored.provider,
             driveFileId: stored.provider === "GOOGLE_DRIVE" ? stored.fileId : null,
             driveFolderId: stored.folderId,
@@ -354,11 +376,13 @@ const seedDemoResource = async (sample: DemoResourceSeed): Promise<void> => {
           collegeId: sample.collegeId,
           departmentId: sample.departmentId,
           courseId: sample.courseId,
+          semesterCourseId: sample.semesterCourseId ?? null,
+          categoryId: sample.categoryId ?? null,
           sessionId: sample.sessionId,
-          title: `Demo ${sample.audience} ${sample.state} ${sample.key}`,
+          title: sample.title ?? `Demo ${sample.audience} ${sample.state} ${sample.key}`,
           description: `Seeded ${sample.state.toLowerCase()} ${sample.audience.toLowerCase()} sample`,
           tags: `demo,${sample.audience.toLowerCase()},${sample.state.toLowerCase()}`,
-          resourceType: "NOTES",
+          resourceType: sample.resourceType ?? "NOTES",
           audience: sample.audience,
           state: sample.state,
         },
@@ -486,6 +510,21 @@ const resetDemoNamespace = async (): Promise<void> => {
   const demoAccount = { email: { endsWith: DEMO_EMAIL_DOMAIN } };
 
   await resetDemoResources();
+
+  const demoUsers = await prisma.user.findMany({ where: { email: { endsWith: DEMO_EMAIL_DOMAIN } }, select: { id: true } });
+  const demoUserIds = demoUsers.map((user) => user.id);
+  const demoSemesters = await prisma.semester.findMany({ where: { createdById: { in: demoUserIds } }, select: { id: true } });
+  const demoSemesterIds = demoSemesters.map((semester) => semester.id);
+  if (demoSemesterIds.length > 0) {
+    const demoSemesterCourses = await prisma.semesterCourse.findMany({ where: { semesterId: { in: demoSemesterIds } }, select: { id: true } });
+    const demoSemesterCourseIds = demoSemesterCourses.map((entry) => entry.id);
+    await prisma.$transaction(async (tx) => {
+      await tx.resource.updateMany({ where: { semesterCourseId: { in: demoSemesterCourseIds } }, data: { semesterCourseId: null, categoryId: null } });
+      await tx.category.deleteMany({ where: { semesterCourseId: { in: demoSemesterCourseIds } } });
+      await tx.semesterCourse.deleteMany({ where: { id: { in: demoSemesterCourseIds } } });
+      await tx.semester.deleteMany({ where: { id: { in: demoSemesterIds } } });
+    });
+  }
 
   const roles = await prisma.userRole.deleteMany({ where: { user: demoAccount } });
   const students = await prisma.studentProfile.deleteMany({ where: { user: demoAccount } });
@@ -749,6 +788,8 @@ const main = async (): Promise<void> => {
   const courses = {
     dataStructures: await upsertCourse(cse.id, "Data Structures", 3),
     algorithms: await upsertCourse(cse.id, "Algorithms", 4),
+    digitalLogic: await upsertCourse(cse.id, "Digital Logic", 3),
+    discreteMath: await upsertCourse(cse.id, "Discrete Math", 3),
     operatingSystems: await upsertCourse(cse.id, "Operating Systems", 5),
     circuitAnalysis: await upsertCourse(eee.id, "Circuit Analysis", 1),
     digitalElectronics: await upsertCourse(eee.id, "Digital Electronics", 3),
@@ -799,13 +840,14 @@ const main = async (): Promise<void> => {
       type: "STUDENT",
     }),
     // Teachers.
-    teacher1: await upsertUser({ email: ACCOUNTS.teacher1, name: "Demo Teacher One", type: "TEACHER" }),
-    teacher2: await upsertUser({ email: ACCOUNTS.teacher2, name: "Demo Teacher Two", type: "TEACHER" }),
+    teacher1: await upsertUser({ email: ACCOUNTS.teacher1, name: "Prof. Karim", type: "TEACHER" }),
+    teacher2: await upsertUser({ email: ACCOUNTS.teacher2, name: "Dr. Sultana", type: "TEACHER" }),
     teacherMulti: await upsertUser({
       email: ACCOUNTS.teacherMulti,
-      name: "Multi-Department Teacher",
+      name: "Prof. Hasan",
       type: "TEACHER",
     }),
+    teacherDiscrete: await upsertUser({ email: ACCOUNTS.teacherDiscrete, name: "Dr. Rahman", type: "TEACHER" }),
     teacherB: await upsertUser({ email: ACCOUNTS.teacherB, name: "Other College Teacher", type: "TEACHER" }),
     teacherPending: await upsertUser({
       email: ACCOUNTS.teacherPending,
@@ -876,6 +918,12 @@ const main = async (): Promise<void> => {
     status: "ACTIVE",
   });
   await seedTeacher({
+    userId: users.teacherDiscrete.id,
+    collegeId: collegeA.id,
+    departmentIds: [cse.id],
+    status: "ACTIVE",
+  });
+  await seedTeacher({
     userId: users.subAdminA.id,
     collegeId: collegeA.id,
     departmentIds: [cse.id],
@@ -941,6 +989,43 @@ const main = async (): Promise<void> => {
   await assignCr(users.crOld.id, cse.id, cse2021.id);
   await assignCr(users.crEee.id, eee.id, eee2022.id);
 
+  const semesterRows = await Promise.all([1, 2, 3, 4].map((number) =>
+    prisma.semester.upsert({
+      where: { unique_semester_scope_name: { collegeId: collegeA.id, departmentId: cse.id, sessionId: cse2022.id, name: `Semester ${number}` } },
+      update: {},
+      create: { collegeId: collegeA.id, departmentId: cse.id, sessionId: cse2022.id, name: `Semester ${number}`, createdById: users.cr.id },
+    }),
+  ));
+  const semesterThree = semesterRows[2];
+  if (!semesterThree) throw new Error("Semester 3 seed row is missing");
+  const teacherProfiles = await prisma.teacherProfile.findMany({
+    where: { userId: { in: [users.teacher1.id, users.teacher2.id, users.teacherMulti.id, users.teacherDiscrete.id] } },
+    select: { id: true, userId: true },
+  });
+  const teacherProfileId = new Map(teacherProfiles.map((profile) => [profile.userId, profile.id]));
+  const semesterCourseRows = await Promise.all([
+    { courseId: courses.dataStructures.id, teacherId: users.teacher1.id },
+    { courseId: courses.algorithms.id, teacherId: users.teacher2.id },
+    { courseId: courses.digitalLogic.id, teacherId: users.teacherMulti.id },
+    { courseId: courses.discreteMath.id, teacherId: users.teacherDiscrete.id },
+  ].map(({ courseId, teacherId }) => prisma.semesterCourse.upsert({
+    where: { unique_semester_course: { semesterId: semesterThree.id, courseId } },
+    update: { teacherProfileId: teacherProfileId.get(teacherId) ?? null },
+    create: { semesterId: semesterThree.id, courseId, teacherProfileId: teacherProfileId.get(teacherId) ?? null },
+  })));
+  const categoryIds = new Map<string, string>();
+  for (const semesterCourse of semesterCourseRows) {
+    for (const name of ["Student notes", "Question bank", "Assignments", "Books"]) {
+      const category = await prisma.category.upsert({
+        where: { unique_category_course_name: { semesterCourseId: semesterCourse.id, name } },
+        update: { createdById: users.cr.id },
+        create: { semesterCourseId: semesterCourse.id, name, createdById: users.cr.id },
+        select: { id: true },
+      });
+      categoryIds.set(`${semesterCourse.courseId}:${name}`, category.id);
+    }
+  }
+
   const demoResourceSamples: DemoResourceSeed[] = [
     { key: "private-pending", uploaderId: users.teacher1.id, uploaderType: "TEACHER", collegeId: collegeA.id, departmentId: cse.id, courseId: courses.dataStructures.id, sessionId: null, audience: "PRIVATE", state: "PENDING" },
     { key: "private-approved", uploaderId: users.teacherMulti.id, uploaderType: "TEACHER", collegeId: collegeA.id, departmentId: cse.id, courseId: courses.algorithms.id, sessionId: null, audience: "PRIVATE", state: "APPROVED" },
@@ -954,6 +1039,10 @@ const main = async (): Promise<void> => {
     { key: "platform-pending", uploaderId: users.cr.id, uploaderType: "STUDENT", collegeId: collegeA.id, departmentId: cse.id, courseId: courses.dataStructures.id, sessionId: cse2022.id, audience: "PLATFORM", state: "PENDING" },
     { key: "platform-approved", uploaderId: users.cr.id, uploaderType: "STUDENT", collegeId: collegeA.id, departmentId: cse.id, courseId: courses.algorithms.id, sessionId: cse2022.id, audience: "PLATFORM", state: "APPROVED" },
     { key: "platform-rejected", uploaderId: users.subAdminA.id, uploaderType: "TEACHER", collegeId: collegeA.id, departmentId: cse.id, courseId: courses.operatingSystems.id, sessionId: null, audience: "PLATFORM", state: "REJECTED" },
+    { key: "semester-trees-pptx", title: "Trees and graphs", uploaderId: users.teacher1.id, uploaderType: "TEACHER", collegeId: collegeA.id, departmentId: cse.id, courseId: courses.dataStructures.id, semesterCourseId: semesterCourseRows[0]?.id, sessionId: null, audience: "PERMITTED", state: "APPROVED", grantSessionIds: [cse2022.id], resourceType: "SLIDES", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", fileExtension: "pptx", fileSizeBytes: 8_200_000 },
+    { key: "semester-arrays-pdf", title: "Arrays and lists lecture", uploaderId: users.teacher2.id, uploaderType: "TEACHER", collegeId: collegeA.id, departmentId: cse.id, courseId: courses.algorithms.id, semesterCourseId: semesterCourseRows[1]?.id, sessionId: null, audience: "PERMITTED", state: "APPROVED", grantSessionIds: [cse2022.id], resourceType: "SLIDES", mimeType: "application/pdf", fileExtension: "pdf", fileSizeBytes: 2_400_000 },
+    { key: "semester-stacks-docx", title: "Stacks and queues", uploaderId: users.student1.id, uploaderType: "STUDENT", collegeId: collegeA.id, departmentId: cse.id, courseId: courses.dataStructures.id, semesterCourseId: semesterCourseRows[0]?.id, categoryId: categoryIds.get(`${courses.dataStructures.id}:Student notes`), sessionId: cse2022.id, audience: "COLLEGE", state: "APPROVED", resourceType: "NOTES", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", fileExtension: "docx", fileSizeBytes: 640_000 },
+    { key: "semester-sort-question-png", title: "Sorting practice questions", uploaderId: users.cr.id, uploaderType: "STUDENT", collegeId: collegeA.id, departmentId: cse.id, courseId: courses.algorithms.id, semesterCourseId: semesterCourseRows[1]?.id, categoryId: categoryIds.get(`${courses.algorithms.id}:Question bank`), sessionId: cse2022.id, audience: "COLLEGE", state: "APPROVED", resourceType: "QUESTION_BANK", mimeType: "image/png", fileExtension: "png", fileSizeBytes: 1_800_000 },
   ];
 
   await seedDemoResources(demoResourceSamples);

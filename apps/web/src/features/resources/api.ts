@@ -45,6 +45,8 @@ export const uploadResource = async (input: ResourceUploadInput, file: File): Pr
   form.set("title", input.title);
   form.set("resourceType", input.resourceType);
   form.set("courseId", input.courseId);
+  if (input.semesterCourseId) form.set("semesterCourseId", input.semesterCourseId);
+  if (input.categoryId) form.set("categoryId", input.categoryId);
   form.set("audience", input.audience);
   if (input.description) form.set("description", input.description);
   if (input.tags) form.set("tags", input.tags);
@@ -55,6 +57,8 @@ export const uploadResource = async (input: ResourceUploadInput, file: File): Pr
 
 export const fetchMyResources = (state?: ResourceState): Promise<ResourceListItem[]> =>
   apiGet<ResourceListItem[]>(`/resources/mine${toQueryString({ state, pageSize: 50 })}`);
+
+export const deleteResourceAsCr = (id: string): Promise<ResourceDetail> => apiDelete<ResourceDetail>(`/resources/${id}`);
 
 export const fetchResourceList = async (
   filters: ResourceListFilters,

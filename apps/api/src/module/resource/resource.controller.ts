@@ -51,6 +51,12 @@ export const editResourceMetadata: RequestHandler = async (req, res) => {
   sendResponse(res, { message: "Resource metadata updated", data: resource });
 };
 
+export const deleteResourceAsCr: RequestHandler = async (req, res) => {
+  const { params } = getValidated<never, never, ResourceIdParams>(res);
+  const resource = await resourceService.deleteResourceAsCr(requireAuth(req), params.id);
+  sendResponse(res, { message: "Resource deleted", data: resource });
+};
+
 /** POST /api/v1/resources/:id/versions — multipart file upload (S3-B7). */
 export const uploadResourceVersion: RequestHandler = async (req, res) => {
   const { params } = getValidated<never, never, ResourceIdParams>(res);

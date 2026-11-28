@@ -1,0 +1,59 @@
+model Semester {
+  id           String   @id @default(uuid()) @db.Uuid
+  collegeId    String   @db.Uuid
+  departmentId String   @db.Uuid
+  sessionId    String   @db.Uuid
+  name         String
+  createdById  String   @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  collegeDepartment CollegeDepartment @relation(fields: [collegeId, departmentId], references: [collegeId, departmentId])
+  session           Session           @relation(fields: [sessionId, departmentId], references: [id, departmentId])
+  createdBy         User              @relation("SemesterCreator", fields: [createdById], references: [id])
+  courses           SemesterCourse[]
+
+  @@unique([collegeId, departmentId, sessionId, name], name: "unique_semester_scope_name")
+  @@unique([id, departmentId], name: "unique_semester_id_department")
+  @@index([collegeId, departmentId, sessionId], name: "idx_semester_scope")
+  @@map("semesters")
+}
+
+model SemesterCourse {
+  id               String   @id @default(uuid()) @db.Uuid
+  semesterId       String   @db.Uuid
+  courseId         String   @db.Uuid
+  name             String?
+  teacherProfileId String?  @db.Uuid
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  semester       Semester       @relation(fields: [semesterId], references: [id])
+  course         Course         @relation(fields: [courseId], references: [id])
+  teacherProfile TeacherProfile? @relation(fields: [teacherProfileId], references: [id])
+  categories     Category[]
+  resources      Resource[]
+
+  @@unique([semesterId, courseId], name: "unique_semester_course")
+  @@index([courseId], name: "idx_semester_course_course")
+  @@index([teacherProfileId], name: "idx_semester_course_teacher")
+  @@map("semester_courses")
+}
+
+model Category {
+  id               String   @id @default(uuid()) @db.Uuid
+  semesterCourseId String   @db.Uuid
+  name             String
+  createdById      String   @db.Uuid
+  isSystem         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  semesterCourse SemesterCourse @relation(fields: [semesterCourseId], references: [id])
+  createdBy      User           @relation("CategoryCreator", fields: [createdById], references: [id])
+  resources      Resource[]
+
+  @@unique([semesterCourseId, name], name: "unique_category_course_name")
+  @@index([semesterCourseId], name: "idx_category_semester_course")
+  @@map("categories")
+}

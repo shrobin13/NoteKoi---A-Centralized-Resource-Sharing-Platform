@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
-import { Navbar } from "@/components/navbar";
+import { Inter } from "next/font/google";
+import { AppShell } from "@/components/app-shell";
 import { Providers } from "@/components/providers";
 import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: "NoteKoi — shared course resources",
@@ -10,11 +13,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning className={inter.variable}>
       <body className="min-h-screen bg-background antialiased">
         <Providers>
-          <Navbar />
-          <main className="mx-auto w-full max-w-5xl px-4 py-8 md:px-6">{children}</main>
+          <AppShell>{children}</AppShell>
         </Providers>
       </body>
     </html>

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   fetchMyResources,
+  deleteResourceAsCr,
   fetchResourceList,
   fetchResourceDetail,
   saveResourceSharing,
@@ -99,6 +100,17 @@ export const useSaveResourceSharing = () => {
       void queryClient.invalidateQueries({ queryKey: resourceKeys.all });
       void queryClient.invalidateQueries({ queryKey: resourceKeys.detail(input.resourceId) });
       toast.success("Sharing settings saved");
+    },
+  });
+};
+
+export const useDeleteResourceAsCr = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: deleteResourceAsCr,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: resourceKeys.all });
+      toast.success("File deleted.");
     },
   });
 };

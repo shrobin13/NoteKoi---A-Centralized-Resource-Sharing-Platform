@@ -8,6 +8,8 @@ model Resource {
   courseId            String        @db.Uuid
   sessionId           String?       @db.Uuid
   folderId            String?       @db.Uuid
+  semesterCourseId    String?       @db.Uuid
+  categoryId          String?       @db.Uuid
   title               String
   description         String?
   tags                String?
@@ -30,6 +32,8 @@ model Resource {
   course                Course                 @relation(fields: [courseId, departmentId], references: [id, departmentId])
   session               Session?               @relation(fields: [sessionId], references: [id])
   folder                Folder?                @relation(fields: [folderId], references: [id])
+  semesterCourse        SemesterCourse?        @relation(fields: [semesterCourseId], references: [id])
+  category              Category?              @relation(fields: [categoryId], references: [id])
   currentVersion        ResourceVersion?       @relation("ResourceCurrentVersion", fields: [currentVersionId], references: [id])
   promotedBy            User?                  @relation("ResourcePromoter", fields: [promotedById], references: [id])
   deletionFlaggedBy     User?                  @relation("ResourceDeletionFlagger", fields: [deletionFlaggedById], references: [id])
@@ -47,6 +51,7 @@ model Resource {
   @@index([uploaderId], name: "idx_resource_uploader")
   @@index([folderId], name: "idx_resource_folder")
   @@index([courseId], name: "idx_resource_course")
+  @@index([semesterCourseId, categoryId], name: "idx_resource_semester_course_category")
   @@index([audience, state], name: "idx_resource_audience_state")
   @@index([state, departmentId, sessionId, createdAt], name: "idx_resource_state_department_session_createdAt")
   /// SE-4: listing a course by audience + state inside one college.

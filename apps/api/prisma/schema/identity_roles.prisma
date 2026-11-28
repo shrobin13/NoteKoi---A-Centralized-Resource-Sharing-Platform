@@ -34,6 +34,8 @@ model User {
   escalationsAssigned ModerationEscalation[] @relation("EscalationAssignee")
   commentsAuthored    Comment[]              @relation("CommentAuthor")
   notifications       Notification[]
+  semestersCreated    Semester[]        @relation("SemesterCreator")
+  categoriesCreated   Category[]        @relation("CategoryCreator")
 
   @@map("users")
 }
@@ -114,6 +116,7 @@ model TeacherProfile {
   userId             String              @unique @db.Uuid
   collegeId          String              @db.Uuid
   teacherDepartments TeacherDepartment[]
+  semesterCourses    SemesterCourse[]
 
   verificationStatus ProfileVerificationStatus @default(PENDING_VERIFICATION)
 

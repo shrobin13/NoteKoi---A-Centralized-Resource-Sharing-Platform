@@ -87,6 +87,13 @@ resourceRouter.patch(
   controller.editResourceMetadata,
 );
 
+resourceRouter.delete(
+  "/:id",
+  checkAuth,
+  validateRequest({ params: resourceIdParamsSchema }),
+  controller.deleteResourceAsCr,
+);
+
 resourceRouter.get(
   "/:id/versions",
   optionalAuth,
